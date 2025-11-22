@@ -1,0 +1,284 @@
+"""
+Historical Data Management
+Fetch, store, and manage historical market data from Angel One
+"""
+
+import pandas as pd
+import requests
+from typing import Dict, List, Optional
+from datetime import datetime, timedelta
+from firebase_admin import firestore
+import logging
+
+logger = logging.getLogger(__name__)
+
+db = firestore.client()
+
+
+class HistoricalDataManager:
+    """
+    Manages historical market data fetching and storage.
+    """
+    
+    def __init__(self, api_key: str, jwt_token: str):
+        """
+        Initialize Historical Data Manager.
+        
+        Args:
+            api_key: Angel One API key
+            jwt_token: User's JWT token
+        """
+        self.api_key = api_key
+        self.jwt_token = jwt_token
+        self.base_url = "https://apiconnect.angelone.in"
+        
+    def _get_headers(self) -> Dict:
+        """Get API request headers"""
+        return {
+            'Authorization': f'Bearer {self.jwt_token}',
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'X-UserType': 'USER',
+            'X-SourceID': 'WEB',
+            'X-ClientLocalIP': '127.0.0.1',
+            'X-ClientPublicIP': '127.0.0.1',
+            'X-MACAddress': '00:00:00:00:00:00',
+            'X-PrivateKey': self.api_key
+        }
+    
+    def fetch_historical_data(
+        self,
+        symbol: str,
+        token: str,
+        exchange: str,
+        interval: str,
+        from_date: datetime,
+        to_date: datetime
+    ) -> Optional[pd.DataFrame]:
+        """
+        Fetch historical candle data from Angel One.
+        
+        Args:
+            symbol: Trading symbol
+            token: Symbol token
+            exchange: Exchange (NSE/BSE)
+            interval: Timeframe (ONE_MINUTE, FIVE_MINUTE, ONE_DAY, etc.)
+            from_date: Start date
+            to_date: End date
+            
+        Returns:
+            DataFrame with OHLCV data or None
+        """
+        try:
+            url = f"{self.base_url}/rest/secure/angelbroking/historical/v1/getCandleData"
+            
+            payload = {
+                "exchange": exchange,
+                "symboltoken": str(token),
+                "interval": interval,
+                "fromdate": from_date.strftime("%Y-%m-%d %H:%M"),
+                "todate": to_date.strftime("%Y-%m-%d %H:%M")
+            }
+            
+            logger.info(f"Fetching historical data for {symbol} ({interval})")
+            
+            response = requests.post(
+                url,
+                headers=self._get_headers(),
+                json=payload,
+                timeout=30
+            )
+            
+            response.raise_for_status()
+            result = response.json()
+            
+            if result.get('status') and result.get('data'):
+                # Convert to DataFrame
+                df = pd.DataFrame(result['data'])
+                df.columns = ['timestamp', 'open', 'high', 'low', 'close', 'volume']
+                df['timestamp'] = pd.to_datetime(df['timestamp'])
+                df.set_index('timestamp', inplace=True)
+                
+                # Convert to numeric
+                for col in ['open', 'high', 'low', 'close', 'volume']:
+                    df[col] = pd.to_numeric(df[col])
+                
+                logger.info(f"Fetched {len(df)} candles for {symbol}")
+                return df
+            else:
+                logger.error(f"Failed to fetch data: {result.get('message')}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"Error fetching historical data: {e}")
+            return None
+    
+    def store_to_firestore(
+        self,
+        symbol: str,
+        interval: str,
+        data: pd.DataFrame
+    ):
+        """
+        Store historical data to Firestore.
+        
+        Args:
+            symbol: Stock symbol
+            interval: Timeframe
+            data: OHLCV DataFrame
+        """
+        try:
+            collection_name = f"historical_data_{interval}"
+            doc_ref = db.collection(collection_name).document(symbol)
+            
+            # Convert DataFrame to dict
+            data_dict = data.reset_index().to_dict('records')
+            
+            # Store in batches (Firestore has size limits)
+            batch_size = 100
+            for i in range(0, len(data_dict), batch_size):
+                batch = data_dict[i:i+batch_size]
+                doc_ref.collection('candles').add({
+                    'data': batch,
+                    'updated_at': firestore.SERVER_TIMESTAMP
+                })
+            
+            logger.info(f"Stored {len(data_dict)} candles for {symbol}")
+            
+        except Exception as e:
+            logger.error(f"Error storing data to Firestore: {e}")
+    
+    def load_from_firestore(
+        self,
+        symbol: str,
+        interval: str
+    ) -> Optional[pd.DataFrame]:
+        """
+        Load historical data from Firestore.
+        
+        Args:
+            symbol: Stock symbol
+            interval: Timeframe
+            
+        Returns:
+            DataFrame or None
+        """
+        try:
+            collection_name = f"historical_data_{interval}"
+            doc_ref = db.collection(collection_name).document(symbol)
+            
+            # Get all candle documents
+            candles_docs = doc_ref.collection('candles').stream()
+            
+            all_data = []
+            for doc in candles_docs:
+                data = doc.to_dict().get('data', [])
+                all_data.extend(data)
+            
+            if not all_data:
+                return None
+            
+            # Convert to DataFrame
+            df = pd.DataFrame(all_data)
+            df['timestamp'] = pd.to_datetime(df['timestamp'])
+            df.set_index('timestamp', inplace=True)
+            df.sort_index(inplace=True)
+            
+            logger.info(f"Loaded {len(df)} candles for {symbol} from Firestore")
+            return df
+            
+        except Exception as e:
+            logger.error(f"Error loading data from Firestore: {e}")
+            return None
+    
+    def get_or_fetch_data(
+        self,
+        symbol: str,
+        token: str,
+        exchange: str,
+        interval: str,
+        from_date: datetime,
+        to_date: datetime,
+        force_refresh: bool = False
+    ) -> Optional[pd.DataFrame]:
+        """
+        Get data from cache or fetch if not available.
+        
+        Args:
+            symbol: Stock symbol
+            token: Symbol token
+            exchange: Exchange
+            interval: Timeframe
+            from_date: Start date
+            to_date: End date
+            force_refresh: Force fetch from API
+            
+        Returns:
+            DataFrame or None
+        """
+        if not force_refresh:
+            # Try to load from Firestore
+            cached_data = self.load_from_firestore(symbol, interval)
+            if cached_data is not None:
+                # Filter by date range
+                mask = (cached_data.index >= from_date) & (cached_data.index <= to_date)
+                filtered = cached_data[mask]
+                if len(filtered) > 0:
+                    return filtered
+        
+        # Fetch from API
+        data = self.fetch_historical_data(
+            symbol, token, exchange, interval, from_date, to_date
+        )
+        
+        if data is not None:
+            # Store for future use
+            self.store_to_firestore(symbol, interval, data)
+        
+        return data
+    
+    def calculate_indicators(self, data: pd.DataFrame) -> pd.DataFrame:
+        """
+        Calculate common technical indicators.
+        
+        Args:
+            data: OHLCV DataFrame
+            
+        Returns:
+            DataFrame with indicators
+        """
+        df = data.copy()
+        
+        # Moving Averages
+        df['sma_20'] = df['close'].rolling(window=20).mean()
+        df['sma_50'] = df['close'].rolling(window=50).mean()
+        df['ema_12'] = df['close'].ewm(span=12).mean()
+        df['ema_26'] = df['close'].ewm(span=26).mean()
+        
+        # RSI
+        delta = df['close'].diff()
+        gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+        rs = gain / loss
+        df['rsi'] = 100 - (100 / (1 + rs))
+        
+        # MACD
+        df['macd'] = df['ema_12'] - df['ema_26']
+        df['macd_signal'] = df['macd'].ewm(span=9).mean()
+        df['macd_histogram'] = df['macd'] - df['macd_signal']
+        
+        # Bollinger Bands
+        df['bb_middle'] = df['close'].rolling(window=20).mean()
+        bb_std = df['close'].rolling(window=20).std()
+        df['bb_upper'] = df['bb_middle'] + (bb_std * 2)
+        df['bb_lower'] = df['bb_middle'] - (bb_std * 2)
+        
+        # ATR (Average True Range)
+        high_low = df['high'] - df['low']
+        high_close = abs(df['high'] - df['close'].shift())
+        low_close = abs(df['low'] - df['close'].shift())
+        ranges = pd.concat([high_low, high_close, low_close], axis=1)
+        true_range = ranges.max(axis=1)
+        df['atr'] = true_range.rolling(window=14).mean()
+        
+        return df

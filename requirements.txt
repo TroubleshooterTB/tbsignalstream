@@ -1,0 +1,11 @@
+firebase-admin
+firebase-functions
+google-cloud-firestore
+websocket-client
+pandas
+numpy
+smartapi-python
+google-cloud-secret-manager
+Flask
+Flask-Cors
+gunicorn

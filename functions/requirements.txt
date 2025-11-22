@@ -1,0 +1,21 @@
+firebase-admin==6.5.0
+firebase-functions==0.2.0
+functions-framework==3.*
+requests==2.31.0
+google-cloud-secret-manager==2.19.0
+google-api-core==2.19.0
+google-cloud-firestore==2.16.0
+grpcio==1.62.2
+Flask==3.0.0
+Flask-Cors==4.0.1
+pyotp==2.9.0
+pandas==2.1.0
+numpy==1.25.0
+scipy==1.11.1
+websocket-client==1.6.0
+# SmartApi dependencies
+logzero==1.7.0
+six==1.16.0
+python-dateutil==2.9.0.post0
+# Angel One SmartAPI - install directly from GitHub
+git+https://github.com/angel-one/smartapi-python.git@main

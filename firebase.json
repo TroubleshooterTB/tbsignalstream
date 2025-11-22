@@ -1,0 +1,35 @@
+{
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
+  "storage": {
+    "rules": "storage.rules"
+  },
+  "hosting": {
+    "rewrites": [
+      {
+        "source": "/api/directAngelLogin",
+        "function": "directAngelLogin"
+      },
+      {
+        "source": "/api/marketData",
+        "function": "getMarketData"
+      },
+      {
+        "source": "/**",
+        "run": {
+          "serviceId": "ssrtbsignalstream",
+          "region": "us-central1"
+        }
+      }
+    ]
+  },
+  "apphosting": [
+    {
+      "source": ".",
+      "backendId": "studio",
+      "ignore": ["firebase.json", "**/.*", "**/node_modules/**"]
+    }
+  ]
+}

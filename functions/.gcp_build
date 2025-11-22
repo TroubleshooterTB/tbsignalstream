@@ -1,0 +1,6 @@
+#!/bin/bash
+# Custom build script for Cloud Functions
+# This installs smartapi without PyCrypto dependency
+
+echo "Installing smartapi without PyCrypto dependency..."
+pip install --no-deps smartapi==1.1.0

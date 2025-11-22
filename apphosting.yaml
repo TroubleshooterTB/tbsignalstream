@@ -1,0 +1,57 @@
+run: npm run build
+staticDirectory: .next
+
+# Angel One Smart API integration
+env:
+  # Trading API Credentials
+  - variable: ANGELONE_TRADING_API_KEY
+    secret: ANGELONE_TRADING_API_KEY
+  - variable: ANGELONE_TRADING_API_SECRET
+    secret: ANGELONE_TRADING_SECRET
+  
+  # Historical Data API Credentials
+  - variable: ANGELONE_HISTORICAL_API_KEY
+    secret: ANGELONE_HISTORICAL_API_KEY
+  - variable: ANGELONE_HISTORICAL_API_SECRET
+    secret: ANGELONE_HISTORICAL_SECRET
+  
+  # Market API Credentials
+  - variable: ANGELONE_MARKET_API_KEY
+    secret: ANGELONE_MARKET_API_KEY
+  - variable: ANGELONE_MARKET_API_SECRET
+    secret: ANGELONE_MARKET_SECRET
+  
+  # Publisher API Credentials
+  - variable: ANGELONE_PUBLISHER_API_KEY
+    secret: ANGELONE_PUBLISHER_API_KEY
+  - variable: ANGELONE_PUBLISHER_API_SECRET
+    secret: ANGELONE_PUBLISHER_SECRET
+  
+  # Account Credentials
+  - variable: ANGELONE_CLIENT_CODE
+    secret: ANGELONE_CLIENT_CODE
+  - variable: ANGELONE_PASSWORD
+    secret: ANGELONE_PASSWORD
+  - variable: ANGELONE_TOTP_SECRET
+    secret: ANGELONE_TOTP_SECRET
+
+  # Firebase web app config (JSON). Provide this as a secret with availability BUILD and RUNTIME.
+  - variable: FIREBASE_WEBAPP_CONFIG
+    secret: FIREBASE_WEBAPP_CONFIG
+
+  # Expose client-friendly Firebase variables so Next.js inlines them cleanly at build time
+  - variable: NEXT_PUBLIC_FIREBASE_API_KEY
+    secret: NEXT_PUBLIC_FIREBASE_API_KEY
+  - variable: NEXT_PUBLIC_FIREBASE_APP_ID
+    secret: NEXT_PUBLIC_FIREBASE_APP_ID
+  - variable: NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
+    secret: NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
+  - variable: NEXT_PUBLIC_FIREBASE_PROJECT_ID
+    secret: NEXT_PUBLIC_FIREBASE_PROJECT_ID
+  - variable: NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
+    secret: NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
+  - variable: NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
+    secret: NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
+  - variable: NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID
+    secret: NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID
+

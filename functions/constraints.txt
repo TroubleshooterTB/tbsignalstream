@@ -1,0 +1,3 @@
+# Constraints file to prevent deprecated packages
+# Never install PyCrypto - use pycryptodome instead
+PyCrypto==0.0.0  # This version doesn't exist, preventing installation

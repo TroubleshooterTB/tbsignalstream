@@ -1,0 +1,40 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // User credentials (existing)
+    match /user_credentials/{userId}/{document=**} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Angel One credentials (existing)
+    match /angel_one_credentials/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Live tick data - real-time WebSocket data
+    match /live_ticks/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Order history - all placed orders
+    match /orders/{userId}/order_history/{orderId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Trading positions - open positions
+    match /trading_positions/{userId}/open/{symbol} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Trading positions - historical trades
+    match /trading_positions/{userId}/history/{tradeId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Historical data - cached OHLCV candles (read-only for users, write for Cloud Functions)
+    match /historical_data/{document=**} {
+      allow read: if request.auth != null;
+      allow write: if false; // Only Cloud Functions can write
+    }
+  }
+}

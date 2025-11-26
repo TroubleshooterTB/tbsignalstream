@@ -3,6 +3,7 @@ import './globals.css';
 import { Toaster } from "sonner";
 import { MainLayout } from '@/components/main-layout';
 import { AuthProvider } from '@/context/auth-context';
+import { TradingProvider } from '@/context/trading-context';
 
 export const metadata: Metadata = {
   title: 'SignalStream',
@@ -23,9 +24,11 @@ export default function RootLayout({
       </head>
       <body className="font-body antialiased">
         <AuthProvider>
-          <MainLayout>
-            {children}
-          </MainLayout>
+          <TradingProvider>
+            <MainLayout>
+              {children}
+            </MainLayout>
+          </TradingProvider>
         </AuthProvider>
         <Toaster />
       </body>

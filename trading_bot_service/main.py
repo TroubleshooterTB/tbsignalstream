@@ -4,6 +4,7 @@ Manages persistent WebSocket connections and live trading operations
 """
 
 from flask import Flask, request, jsonify
+from flask_cors import CORS
 import firebase_admin
 from firebase_admin import credentials, firestore, auth
 import logging
@@ -14,6 +15,13 @@ import json
 
 # Initialize Flask app
 app = Flask(__name__)
+
+# Enable CORS for all routes
+CORS(app, origins=[
+    'https://tbsignalstream.web.app',
+    'https://tbsignalstream.firebaseapp.com',
+    'http://localhost:3000'
+], supports_credentials=True)
 
 # Configure logging
 logging.basicConfig(

@@ -1,84 +1,24 @@
 "use client";
 
-import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Loader2, Play, Square, Bot } from 'lucide-react';
-import { tradingBotApi } from '@/lib/trading-api';
-import { useToast } from '@/hooks/use-toast';
+import { useTradingContext } from '@/context/trading-context';
 
 export function TradingBotControls() {
-  const [isRunning, setIsRunning] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const { toast } = useToast();
-  
-  const [config, setConfig] = useState({
-    symbols: 'SBIN-EQ,RELIANCE-EQ,TCS-EQ',
-    mode: 'paper' as 'paper' | 'live',
-    maxPositions: '3',
-    positionSize: '1000',
-  });
-
-  const handleStart = async () => {
-    setIsLoading(true);
-    try {
-      const symbols = config.symbols.split(',').map(s => s.trim()).filter(Boolean);
-      
-      if (symbols.length === 0) {
-        toast({
-          title: 'Validation Error',
-          description: 'Please enter at least one symbol',
-          variant: 'destructive',
-        });
-        return;
-      }
-
-      const result = await tradingBotApi.start({
-        symbols,
-        mode: config.mode,
-        maxPositions: parseInt(config.maxPositions),
-        positionSize: parseFloat(config.positionSize),
-      });
-      
-      setIsRunning(true);
-      toast({
-        title: 'Trading Bot Started',
-        description: `Bot is now ${config.mode === 'paper' ? 'paper trading' : 'live trading'} with ${symbols.length} symbols`,
-      });
-    } catch (error: any) {
-      toast({
-        title: 'Failed to Start Bot',
-        description: error.message,
-        variant: 'destructive',
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleStop = async () => {
-    setIsLoading(true);
-    try {
-      await tradingBotApi.stop();
-      setIsRunning(false);
-      toast({
-        title: 'Trading Bot Stopped',
-        description: 'Bot has been successfully stopped',
-      });
-    } catch (error: any) {
-      toast({
-        title: 'Failed to Stop Bot',
-        description: error.message,
-        variant: 'destructive',
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  const {
+    isBotRunning,
+    isBotLoading,
+    botConfig,
+    startTradingBot,
+    stopTradingBot,
+    updateBotConfig
+  } = useTradingContext();
 
   return (
     <Card>
@@ -91,8 +31,8 @@ export function TradingBotControls() {
             </CardTitle>
             <CardDescription>Automated trading with real-time signals</CardDescription>
           </div>
-          <Badge variant={isRunning ? 'default' : 'secondary'} className={isRunning ? 'bg-green-600' : ''}>
-            {isRunning ? 'Running' : 'Stopped'}
+          <Badge variant={isBotRunning ? 'default' : 'secondary'} className={isBotRunning ? 'bg-green-600' : ''}>
+            {isBotRunning ? 'Running' : 'Stopped'}
           </Badge>
         </div>
       </CardHeader>
@@ -101,11 +41,37 @@ export function TradingBotControls() {
           <Label htmlFor="symbols">Symbols (comma-separated)</Label>
           <Input
             id="symbols"
-            placeholder="SBIN-EQ,RELIANCE-EQ,TCS-EQ"
-            value={config.symbols}
-            onChange={(e) => setConfig({ ...config, symbols: e.target.value })}
-            disabled={isRunning}
+            placeholder="All Nifty 50 stocks (default) or custom list: SBIN-EQ,RELIANCE-EQ,TCS-EQ"
+            value={botConfig.symbols}
+            onChange={(e) => updateBotConfig({ symbols: e.target.value })}
+            disabled={isBotRunning}
           />
+          <p className="text-xs text-muted-foreground">
+            Bot scans all symbols and selects trades with highest confidence scores
+          </p>
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="strategy">Trading Strategy</Label>
+          <Select
+            value={botConfig.strategy}
+            onValueChange={(value: 'pattern' | 'ironclad' | 'both') => updateBotConfig({ strategy: value })}
+            disabled={isBotRunning}
+          >
+            <SelectTrigger id="strategy">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="pattern">Pattern Detector (Default)</SelectItem>
+              <SelectItem value="ironclad">Ironclad Strategy (Defining Range)</SelectItem>
+              <SelectItem value="both">Both (Dual Confirmation)</SelectItem>
+            </SelectContent>
+          </Select>
+          <p className="text-sm text-muted-foreground">
+            {botConfig.strategy === 'pattern' && 'Uses pattern detection with 30-point validation'}
+            {botConfig.strategy === 'ironclad' && 'Uses defining range breakout with multi-indicator confirmation'}
+            {botConfig.strategy === 'both' && 'Only trades when both strategies agree (highest confidence)'}
+          </p>
         </div>
 
         <div className="grid grid-cols-2 gap-4">
@@ -114,9 +80,9 @@ export function TradingBotControls() {
             <Input
               id="maxPositions"
               type="number"
-              value={config.maxPositions}
-              onChange={(e) => setConfig({ ...config, maxPositions: e.target.value })}
-              disabled={isRunning}
+              value={botConfig.maxPositions}
+              onChange={(e) => updateBotConfig({ maxPositions: e.target.value })}
+              disabled={isBotRunning}
             />
           </div>
           <div className="space-y-2">
@@ -124,9 +90,9 @@ export function TradingBotControls() {
             <Input
               id="positionSize"
               type="number"
-              value={config.positionSize}
-              onChange={(e) => setConfig({ ...config, positionSize: e.target.value })}
-              disabled={isRunning}
+              value={botConfig.positionSize}
+              onChange={(e) => updateBotConfig({ positionSize: e.target.value })}
+              disabled={isBotRunning}
             />
           </div>
         </div>
@@ -134,31 +100,31 @@ export function TradingBotControls() {
         <div className="flex items-center justify-between p-4 bg-amber-50 dark:bg-amber-950 rounded-lg border border-amber-200 dark:border-amber-800">
           <div className="flex flex-col gap-1">
             <Label htmlFor="liveMode" className="cursor-pointer font-semibold">
-              {config.mode === 'live' ? '🔴 LIVE TRADING MODE' : '📄 Paper Trading Mode'}
+              {botConfig.mode === 'live' ? '🔴 LIVE TRADING MODE' : '📄 Paper Trading Mode'}
             </Label>
             <span className="text-sm text-muted-foreground">
-              {config.mode === 'live' 
+              {botConfig.mode === 'live' 
                 ? 'Real money will be used. Trades will be executed on your broker account.' 
                 : 'Simulated trading. No real money will be used.'}
             </span>
           </div>
           <Switch
             id="liveMode"
-            checked={config.mode === 'live'}
-            onCheckedChange={(checked) => setConfig({ ...config, mode: checked ? 'live' : 'paper' })}
-            disabled={isRunning}
+            checked={botConfig.mode === 'live'}
+            onCheckedChange={(checked) => updateBotConfig({ mode: checked ? 'live' : 'paper' })}
+            disabled={isBotRunning}
           />
         </div>
 
         <div className="flex gap-2 pt-2">
-          {!isRunning ? (
+          {!isBotRunning ? (
             <Button
-              onClick={handleStart}
-              disabled={isLoading}
+              onClick={startTradingBot}
+              disabled={isBotLoading}
               className="flex-1"
               size="lg"
             >
-              {isLoading ? (
+              {isBotLoading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   Starting...
@@ -172,13 +138,13 @@ export function TradingBotControls() {
             </Button>
           ) : (
             <Button
-              onClick={handleStop}
-              disabled={isLoading}
+              onClick={stopTradingBot}
+              disabled={isBotLoading}
               variant="destructive"
               className="flex-1"
               size="lg"
             >
-              {isLoading ? (
+              {isBotLoading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   Stopping...

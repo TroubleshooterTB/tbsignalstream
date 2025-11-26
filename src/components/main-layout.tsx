@@ -25,13 +25,20 @@ import { UserNav } from './user-nav';
 // Restored to its original, correct state. Its only role is to observe auth changes.
 export function MainLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const [isMounted, setIsMounted] = React.useState(false);
 
   React.useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
+  React.useEffect(() => {
+    if (!isMounted || !auth) return;
+    
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       user.set(currentUser);
     });
     return () => unsubscribe();
-  }, []);
+  }, [isMounted]);
 
   const isActive = (path: string) => {
     if (path === '/') return pathname === '/';
@@ -58,14 +65,6 @@ export function MainLayout({ children }: { children: React.ReactNode }) {
                 <Link href="/">
                   <LayoutDashboard />
                   <span>Dashboard</span>
-                </Link>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-            <SidebarMenuItem>
-              <SidebarMenuButton asChild isActive={isActive('/catalyst-engine')}>
-                <Link href="/catalyst-engine">
-                  <BrainCircuit />
-                  <span>AI Catalyst Engine</span>
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>

@@ -1,57 +1,18 @@
 "use client";
 
-import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Loader2, Power, PowerOff, Wifi, WifiOff } from 'lucide-react';
-import { websocketApi } from '@/lib/trading-api';
-import { useToast } from '@/hooks/use-toast';
+import { useTradingContext } from '@/context/trading-context';
 
 export function WebSocketControls() {
-  const [isConnected, setIsConnected] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const { toast } = useToast();
-
-  const handleInitialize = async () => {
-    setIsLoading(true);
-    try {
-      const result = await websocketApi.initialize();
-      setIsConnected(true);
-      toast({
-        title: 'WebSocket Connected',
-        description: result.message || 'Successfully connected to live market data',
-      });
-    } catch (error: any) {
-      toast({
-        title: 'Connection Failed',
-        description: error.message,
-        variant: 'destructive',
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleClose = async () => {
-    setIsLoading(true);
-    try {
-      await websocketApi.close();
-      setIsConnected(false);
-      toast({
-        title: 'WebSocket Disconnected',
-        description: 'Successfully closed live market data connection',
-      });
-    } catch (error: any) {
-      toast({
-        title: 'Disconnect Failed',
-        description: error.message,
-        variant: 'destructive',
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  const {
+    isWebSocketConnected,
+    isWebSocketLoading,
+    connectWebSocket,
+    disconnectWebSocket
+  } = useTradingContext();
 
   return (
     <Card>
@@ -59,7 +20,7 @@ export function WebSocketControls() {
         <div className="flex items-center justify-between">
           <div>
             <CardTitle className="flex items-center gap-2">
-              {isConnected ? (
+              {isWebSocketConnected ? (
                 <Wifi className="h-5 w-5 text-green-500" />
               ) : (
                 <WifiOff className="h-5 w-5 text-gray-400" />
@@ -68,19 +29,19 @@ export function WebSocketControls() {
             </CardTitle>
             <CardDescription>WebSocket connection for real-time quotes</CardDescription>
           </div>
-          <Badge variant={isConnected ? 'default' : 'secondary'}>
-            {isConnected ? 'Connected' : 'Disconnected'}
+          <Badge variant={isWebSocketConnected ? 'default' : 'secondary'}>
+            {isWebSocketConnected ? 'Connected' : 'Disconnected'}
           </Badge>
         </div>
       </CardHeader>
       <CardContent className="flex gap-2">
-        {!isConnected ? (
+        {!isWebSocketConnected ? (
           <Button
-            onClick={handleInitialize}
-            disabled={isLoading}
+            onClick={connectWebSocket}
+            disabled={isWebSocketLoading}
             className="flex-1"
           >
-            {isLoading ? (
+            {isWebSocketLoading ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 Connecting...
@@ -94,12 +55,12 @@ export function WebSocketControls() {
           </Button>
         ) : (
           <Button
-            onClick={handleClose}
-            disabled={isLoading}
+            onClick={disconnectWebSocket}
+            disabled={isWebSocketLoading}
             variant="destructive"
             className="flex-1"
           >
-            {isLoading ? (
+            {isWebSocketLoading ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 Disconnecting...

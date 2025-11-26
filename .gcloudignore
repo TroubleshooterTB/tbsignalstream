@@ -1,3 +1,10 @@
 functions/
 requirements.txt
 venv/
+node_modules/
+.next/
+out/
+.git/
+.env.local
+.env
+*.log

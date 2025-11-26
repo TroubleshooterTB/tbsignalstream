@@ -11,7 +11,7 @@ import firebase_admin
 from firebase_admin import firestore, auth
 from firebase_functions import https_fn, options
 from src.config import ANGEL_ONE_API
-from src.websocket.websocket_manager import AngelWebSocketManager
+from src.websocket.websocket_manager_v2 import AngelWebSocketV2Manager
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -21,7 +21,7 @@ if not firebase_admin._apps:
     firebase_admin.initialize_app()
 
 # Store active WebSocket connections per user
-active_connections: Dict[str, AngelWebSocketManager] = {}
+active_connections: Dict[str, AngelWebSocketV2Manager] = {}
 
 
 def _get_db():
@@ -67,10 +67,11 @@ def initializeWebSocket(request: https_fn.Request) -> https_fn.Response:
         user_data = user_doc.to_dict()
         feed_token = user_data.get('feed_token')
         client_code = user_data.get('client_code')
+        jwt_token = user_data.get('jwt_token')
         
-        if not feed_token or not client_code:
+        if not feed_token or not client_code or not jwt_token:
             return https_fn.Response(
-                json.dumps({"error": "Invalid credentials"}),
+                json.dumps({"error": "Invalid credentials - missing feed_token, client_code, or jwt_token"}),
                 status=403
             )
         
@@ -87,9 +88,9 @@ def initializeWebSocket(request: https_fn.Request) -> https_fn.Response:
             logger.info(f"Reusing existing WebSocket for user {uid}")
             ws_manager = active_connections[uid]
         else:
-            # Create new WebSocket connection
-            logger.info(f"Creating new WebSocket for user {uid}")
-            ws_manager = AngelWebSocketManager(api_key, client_code, feed_token)
+            # Create new WebSocket connection using v2 protocol
+            logger.info(f"Creating new WebSocket v2 connection for user {uid}")
+            ws_manager = AngelWebSocketV2Manager(api_key, client_code, feed_token, jwt_token)
             
             # Add callback to store ticks in Firestore
             def tick_callback(tick_data):

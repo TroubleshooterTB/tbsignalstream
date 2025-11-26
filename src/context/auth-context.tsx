@@ -23,19 +23,26 @@ type AuthProviderProps = {
 export const AuthProvider = ({ children }: AuthProviderProps) => {
   const [firebaseUser, setFirebaseUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isMounted, setIsMounted] = useState(false);
 
   useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!isMounted || !auth) return;
+    
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setFirebaseUser(user);
       setLoading(false);
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [isMounted]);
 
   return (
     <AuthContext.Provider value={{ firebaseUser, loading }}>
-      {!loading && children}
+      {children}
     </AuthContext.Provider>
   );
 };

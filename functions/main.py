@@ -3,7 +3,9 @@ import os
 import requests
 import json
 import pyotp
+from datetime import datetime, timedelta
 from src.config import ANGEL_ONE_API
+from src.data.historical_data_manager import HistoricalDataManager
 
 # Firebase and Google Cloud imports
 import firebase_admin
@@ -15,6 +17,9 @@ from google.api_core import exceptions as google_exceptions
 from websocket_server import initializeWebSocket, subscribeWebSocket, closeWebSocket
 from order_functions import placeOrder, modifyOrder, cancelOrder, getOrderBook, getPositions
 from live_trading_bot import startLiveTradingBot, stopLiveTradingBot
+
+# Import Ironclad Strategy (Sidecar Module)
+from ironclad_logic import IroncladStrategy
 
 # --- Firebase Admin SDK Initialization ---
 if not firebase_admin._apps:
@@ -35,7 +40,8 @@ __all__ = [
     'getOrderBook',
     'getPositions',
     'startLiveTradingBot',
-    'stopLiveTradingBot'
+    'stopLiveTradingBot',
+    'runIroncladAnalysis'  # New Ironclad Strategy endpoint
 ]
 
 @https_fn.on_request(
@@ -273,3 +279,226 @@ def getMarketData(request: https_fn.Request) -> https_fn.Response:
     except Exception as e:
         print(f"Unexpected error: {e}")
         return https_fn.Response(json.dumps({"error": str(e)}), status=500)
+
+
+@https_fn.on_request(
+    cors=options.CorsOptions(cors_origins="*", cors_methods=["post"]),
+    memory=options.MemoryOption.GB_1,
+    timeout_sec=300
+)
+def runIroncladAnalysis(request: https_fn.Request) -> https_fn.Response:
+    """
+    Run Ironclad Strategy analysis on specified symbols.
+    
+    This is a standalone endpoint that demonstrates the Ironclad Strategy
+    without modifying the existing live trading bot infrastructure.
+    
+    Request body:
+    {
+        "symbols": ["RELIANCE", "TCS"],  // Symbols to analyze
+        "niftySymbol": "NIFTY50"          // Optional, defaults to NIFTY50
+    }
+    
+    Returns:
+    {
+        "status": "success",
+        "signals": {
+            "RELIANCE": {
+                "signal": "BUY",
+                "entry_price": 2850.50,
+                "stop_loss": 2820.00,
+                "target": 2895.75,
+                "regime": "BULLISH",
+                "dr_high": 2855.00,
+                "dr_low": 2830.00
+            }
+        }
+    }
+    """
+    print("--- IRONCLAD STRATEGY ANALYSIS INITIATED ---")
+    
+    # 1. Verify Firebase ID token
+    id_token = request.headers.get('Authorization', '').split('Bearer ')[-1]
+    if not id_token:
+        return https_fn.Response(json.dumps({"error": "Authentication token is required."}), status=401)
+    
+    try:
+        decoded_token = auth.verify_id_token(id_token)
+        uid = decoded_token['uid']
+    except auth.InvalidIdTokenError:
+        return https_fn.Response(json.dumps({"error": "Invalid authentication token."}), status=401)
+    except Exception as e:
+        return https_fn.Response(json.dumps({"error": f"Token verification failed: {e}"}), status=401)
+    
+    # 2. Get request parameters
+    data = request.get_json(silent=True) or {}
+    symbols = data.get('symbols', ['RELIANCE'])
+    nifty_symbol = data.get('niftySymbol', 'NIFTY50')
+    
+    if not isinstance(symbols, list) or len(symbols) == 0:
+        return https_fn.Response(json.dumps({"error": "Please provide at least one symbol"}), status=400)
+    
+    try:
+        # 3. Get user's Angel One credentials
+        user_doc_ref = db.collection('angel_one_credentials').document(uid)
+        user_doc = user_doc_ref.get()
+        
+        if not user_doc.exists:
+            return https_fn.Response(json.dumps({"error": "Angel One account not connected. Please connect first."}), status=403)
+        
+        user_data = user_doc.to_dict()
+        jwt_token = user_data.get('jwt_token')
+        api_key = ANGEL_ONE_API.get('API_KEY_TRADING')
+        
+        if not jwt_token or not api_key:
+            return https_fn.Response(json.dumps({"error": "Invalid credentials or API key missing"}), status=403)
+        
+        # 4. Initialize Ironclad Strategy and Historical Data Manager
+        strategy = IroncladStrategy(db)
+        hist_manager = HistoricalDataManager(api_key, jwt_token)
+        print(f"[Ironclad] Initialized strategy for {len(symbols)} symbols")
+        
+        # 5. Fetch historical data for NIFTY (used for regime detection)
+        nifty_token, nifty_exchange = _get_symbol_token(nifty_symbol, api_key, jwt_token)
+        if not nifty_token:
+            return https_fn.Response(json.dumps({"error": f"Could not find token for {nifty_symbol}"}), status=400)
+        
+        # Fetch 30 days of 5-minute candles for NIFTY
+        nifty_df = hist_manager.fetch_historical_data(
+            symbol=nifty_symbol,
+            token=nifty_token,
+            exchange=nifty_exchange,
+            interval="FIVE_MINUTE",
+            from_date=datetime.now() - timedelta(days=30),
+            to_date=datetime.now()
+        )
+        
+        if nifty_df is None or len(nifty_df) == 0:
+            return https_fn.Response(json.dumps({"error": f"No historical data available for {nifty_symbol}"}), status=500)
+        
+        # 6. Run analysis for each symbol
+        signals = {}
+        
+        for symbol in symbols:
+            try:
+                print(f"[Ironclad] Analyzing {symbol}...")
+                
+                # Get token for this symbol
+                stock_token, stock_exchange = _get_symbol_token(symbol, api_key, jwt_token)
+                if not stock_token:
+                    print(f"[Ironclad] Warning: Could not find token for {symbol}, skipping")
+                    signals[symbol] = {
+                        'signal': 'ERROR',
+                        'message': f'Symbol token not found for {symbol}'
+                    }
+                    continue
+                
+                # Fetch stock historical data (30 days, 5-minute candles)
+                stock_df = hist_manager.fetch_historical_data(
+                    symbol=symbol,
+                    token=stock_token,
+                    exchange=stock_exchange,
+                    interval="FIVE_MINUTE",
+                    from_date=datetime.now() - timedelta(days=30),
+                    to_date=datetime.now()
+                )
+                
+                if stock_df is None or len(stock_df) == 0:
+                    print(f"[Ironclad] Warning: No data for {symbol}")
+                    signals[symbol] = {
+                        'signal': 'ERROR',
+                        'message': f'No historical data available for {symbol}'
+                    }
+                    continue
+                
+                # Run Ironclad analysis
+                decision = strategy.run_analysis_cycle(nifty_df, stock_df, symbol)
+                
+                signals[symbol] = decision
+                print(f"[Ironclad] {symbol} signal: {decision.get('signal')}")
+                
+            except Exception as e:
+                print(f"[Ironclad] Error analyzing {symbol}: {e}")
+                signals[symbol] = {
+                    'signal': 'ERROR',
+                    'message': str(e)
+                }
+        
+        # 7. Return results
+        return https_fn.Response(
+            json.dumps({
+                "status": "success",
+                "timestamp": datetime.now().isoformat(),
+                "signals": signals
+            }),
+            status=200
+        )
+        
+    except Exception as e:
+        print(f"[Ironclad] Unexpected error: {e}")
+        return https_fn.Response(
+            json.dumps({"error": f"Analysis failed: {str(e)}"}),
+            status=500
+        )
+
+
+def _get_symbol_token(symbol: str, api_key: str, jwt_token: str):
+    """
+    Search for a symbol and get its token and exchange from Angel One API.
+    
+    Args:
+        symbol: Trading symbol (e.g., 'RELIANCE', 'NIFTY50')
+        api_key: Angel One API key
+        jwt_token: User's JWT token
+        
+    Returns:
+        Tuple of (token, exchange) or (None, None) if not found
+    """
+    try:
+        url = "https://apiconnect.angelone.in/rest/secure/angelbroking/order/v1/searchScrip"
+        
+        # Handle index symbols
+        search_symbol = symbol
+        if symbol == "NIFTY50":
+            search_symbol = "NIFTY 50"
+        elif symbol == "BANKNIFTY":
+            search_symbol = "NIFTY BANK"
+        
+        payload = {
+            "exchange": "NSE",
+            "searchscrip": search_symbol
+        }
+        
+        headers = {
+            'Authorization': f'Bearer {jwt_token}',
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'X-UserType': 'USER',
+            'X-SourceID': 'WEB',
+            'X-ClientLocalIP': '127.0.0.1',
+            'X-ClientPublicIP': '127.0.0.1',
+            'X-MACAddress': '00:00:00:00:00:00',
+            'X-PrivateKey': api_key
+        }
+        
+        response = requests.post(url, headers=headers, json=payload, timeout=10)
+        response.raise_for_status()
+        result = response.json()
+        
+        if result.get('status') and result.get('data'):
+            # Get the first match
+            data = result['data']
+            if isinstance(data, list) and len(data) > 0:
+                match = data[0]
+                token = match.get('symboltoken')
+                exchange = match.get('exch_seg', 'NSE')
+                print(f"[Token Search] Found {symbol}: token={token}, exchange={exchange}")
+                return token, exchange
+        
+        print(f"[Token Search] No match found for {symbol}")
+        return None, None
+        
+    except Exception as e:
+        print(f"[Token Search] Error searching for {symbol}: {e}")
+        return None, None
+

@@ -3,14 +3,15 @@
 # Orchestrates real-time trading with WebSocket data and Angel One execution
 # ==============================================================================
 
-import functions_framework
-from flask import jsonify
+from firebase_functions import https_fn, options
+import json
 import logging
+import os
 from datetime import datetime, timedelta
 import pandas as pd
 import numpy as np
 from typing import Dict, Optional, List
-from firebase_admin import firestore, initialize_app
+from firebase_admin import firestore, initialize_app, auth
 import firebase_admin
 
 # Initialize Firebase Admin
@@ -51,25 +52,63 @@ class LiveTradingBot:
         self.interval = interval
         self.db = firestore.client()
         
+        # Fetch Angel One credentials from Firestore
+        try:
+            user_creds_ref = self.db.collection('angel_one_credentials').document(user_id)
+            user_creds_doc = user_creds_ref.get()
+            
+            if not user_creds_doc.exists:
+                raise ValueError(f"Angel One credentials not found for user {user_id}")
+            
+            credentials = user_creds_doc.to_dict()
+            
+            # Get API key from config (same source as other functions)
+            api_key = ANGEL_ONE_API.get('API_KEY_TRADING')
+            if not api_key:
+                raise ValueError("ANGELONE_TRADING_API_KEY not configured in server")
+            
+            # Get user-specific credentials from Firestore
+            client_code = credentials.get('client_code')
+            feed_token = credentials.get('feed_token')
+            jwt_token = credentials.get('jwt_token')
+            
+            if not all([client_code, feed_token, jwt_token]):
+                raise ValueError(f"Missing required credentials: client_code={bool(client_code)}, feed_token={bool(feed_token)}, jwt_token={bool(jwt_token)}")
+                
+            logging.info(f"[LiveTradingBot] Retrieved credentials for user {user_id}")
+            
+        except Exception as e:
+            logging.error(f"[LiveTradingBot] Failed to fetch credentials: {str(e)}")
+            raise
+        
         # Initialize components
-        self.ws_manager = AngelWebSocketManager(user_id)
-        self.order_manager = OrderManager(user_id)
-        self.risk_manager = RiskManager(
+        self.ws_manager = AngelWebSocketManager(api_key, client_code, feed_token)
+        self.order_manager = OrderManager(api_key, jwt_token)
+        
+        # Initialize RiskManager with proper arguments
+        from src.trading.risk_manager import RiskLimits
+        risk_limits = RiskLimits(
             max_portfolio_heat=0.06,  # 6% max portfolio risk
-            max_position_size=0.02,   # 2% max per trade
-            max_daily_loss=0.03,      # 3% max daily loss
-            max_drawdown=0.10,        # 10% max drawdown
+            max_position_size_pct=0.02,   # 2% max per trade
+            max_daily_loss_pct=0.03,      # 3% max daily loss
+            max_drawdown_pct=0.10,        # 10% max drawdown
             max_correlation=0.7,      # Max 0.7 correlation
             max_open_positions=5,     # Max 5 concurrent positions
             min_risk_reward=2.0,      # Min 2:1 R:R
             max_sector_exposure=0.30  # Max 30% per sector
         )
+        # TODO: Get actual portfolio value from user's account
+        portfolio_value = 100000.0  # Default 1 lakh, should fetch from account
+        self.risk_manager = RiskManager(portfolio_value, risk_limits)
+        
         self.execution_manager = ExecutionManager()
         self.position_manager = PositionManager()
         self.pattern_detector = PatternDetector()
-        self.price_action_engine = PriceActionEngine()
         self.wave_analyzer = WaveAnalyzer()
-        self.historical_manager = HistoricalDataManager(user_id)
+        self.historical_manager = HistoricalDataManager(api_key, jwt_token)
+        
+        # Note: PriceActionEngine requires DataFrame, will initialize when needed
+        self.price_action_engine = None  # Initialize later with data
         
         # Candle building
         self.candle_data: Dict[str, pd.DataFrame] = {}  # symbol -> OHLCV DataFrame
@@ -493,74 +532,145 @@ class LiveTradingBot:
             logging.error(f"[LiveTradingBot] Error stopping bot: {e}", exc_info=True)
 
 
-@functions_framework.http
-def startLiveTradingBot(request):
+@https_fn.on_request(
+    cors=options.CorsOptions(cors_origins="*", cors_methods=["post"])
+)
+def startLiveTradingBot(request: https_fn.Request) -> https_fn.Response:
     """
-    Cloud Function to start the live trading bot
+    Cloud Function to start the live trading bot via Cloud Run service
     Body: {symbols: string[], interval: string}
     """
     try:
-        # Get user ID from auth token
-        auth_header = request.headers.get('Authorization', '')
-        if not auth_header.startswith('Bearer '):
-            return jsonify({'error': 'Unauthorized'}), 401
+        # Verify Firebase ID token
+        id_token = request.headers.get('Authorization', '').split('Bearer ')[-1]
+        if not id_token:
+            return https_fn.Response(json.dumps({'error': 'Authentication token is required'}), status=401)
         
-        # TODO: Verify Firebase token and get user_id
-        user_id = "PiRehqxZQleR8QCZG0QczmQTY402"  # Placeholder
+        try:
+            decoded_token = auth.verify_id_token(id_token)
+            user_id = decoded_token['uid']
+        except auth.InvalidIdTokenError:
+            return https_fn.Response(json.dumps({'error': 'Invalid authentication token'}), status=401)
+        except Exception as e:
+            return https_fn.Response(json.dumps({'error': f'Token verification failed: {e}'}), status=401)
         
-        data = request.get_json()
+        data = request.get_json(silent=True) or {}
         symbols = data.get('symbols', ['RELIANCE', 'HDFCBANK', 'INFY'])
         interval = data.get('interval', '5minute')
+        mode = data.get('mode', 'paper')  # 'paper' or 'live'
+        strategy = data.get('strategy', 'pattern')  # 'pattern', 'ironclad', or 'both'
+        max_positions = data.get('maxPositions', 3)
+        position_size = data.get('positionSize', 1000)
         
-        # Check if bot already running
-        if user_id in active_bots:
-            return jsonify({'error': 'Trading bot already running'}), 400
+        # Cloud Run service URL (will be set after deployment)
+        cloud_run_url = os.environ.get('TRADING_BOT_SERVICE_URL', 'https://trading-bot-service-818546654122.us-central1.run.app')
         
-        # Create and start bot
-        bot = LiveTradingBot(user_id, symbols, interval)
-        import asyncio
-        asyncio.run(bot.start())
+        if not cloud_run_url:
+            # Fallback: Store config in Firestore for manual service connection
+            db = firestore.client()
+            bot_config_ref = db.collection('bot_configs').document(user_id)
+            bot_config_ref.set({
+                'status': 'configured',
+                'symbols': symbols,
+                'interval': interval,
+                'mode': mode,
+                'strategy': strategy,
+                'max_positions': max_positions,
+                'position_size': position_size,
+                'updated_at': firestore.SERVER_TIMESTAMP
+            }, merge=True)
+            
+            return https_fn.Response(
+                json.dumps({
+                    'status': 'success',
+                    'message': 'Trading bot configured. Cloud Run service deployment in progress.',
+                    'symbols': symbols,
+                    'interval': interval,
+                    'mode': mode,
+                    'strategy': strategy
+                }),
+                status=200
+            )
         
-        active_bots[user_id] = bot
+        # Forward ALL parameters to Cloud Run service
+        import requests as req
         
-        return jsonify({
-            'status': 'success',
-            'message': f'Live trading bot started for {len(symbols)} symbols',
-            'symbols': symbols,
-            'interval': interval
-        }), 200
+        service_response = req.post(
+            f"{cloud_run_url}/start",
+            headers={'Authorization': f'Bearer {id_token}'},
+            json={
+                'symbols': symbols,
+                'interval': interval,
+                'mode': mode,
+                'strategy': strategy,
+                'max_positions': max_positions,
+                'position_size': position_size
+            },
+            timeout=30
+        )
+        
+        if service_response.status_code == 200:
+            return https_fn.Response(
+                json.dumps(service_response.json()),
+                status=200
+            )
+        else:
+            return https_fn.Response(
+                json.dumps({
+                    'error': service_response.json().get('error', 'Failed to start bot'),
+                    'details': service_response.text
+                }),
+                status=service_response.status_code
+            )
         
     except Exception as e:
         logging.error(f"Error starting live trading bot: {e}", exc_info=True)
-        return jsonify({'error': str(e)}), 500
+        return https_fn.Response(json.dumps({'error': str(e)}), status=500)
 
 
-@functions_framework.http
-def stopLiveTradingBot(request):
+@https_fn.on_request(
+    cors=options.CorsOptions(cors_origins="*", cors_methods=["post"])
+)
+def stopLiveTradingBot(request: https_fn.Request) -> https_fn.Response:
     """Cloud Function to stop the live trading bot"""
     try:
-        # Get user ID from auth token
-        auth_header = request.headers.get('Authorization', '')
-        if not auth_header.startswith('Bearer '):
-            return jsonify({'error': 'Unauthorized'}), 401
+        # Verify Firebase ID token
+        id_token = request.headers.get('Authorization', '').split('Bearer ')[-1]
+        if not id_token:
+            return https_fn.Response(json.dumps({'error': 'Authentication token is required'}), status=401)
         
-        user_id = "PiRehqxZQleR8QCZG0QczmQTY402"  # Placeholder
+        try:
+            decoded_token = auth.verify_id_token(id_token)
+            user_id = decoded_token['uid']
+        except auth.InvalidIdTokenError:
+            return https_fn.Response(json.dumps({'error': 'Invalid authentication token'}), status=401)
+        except Exception as e:
+            return https_fn.Response(json.dumps({'error': f'Token verification failed: {e}'}), status=401)
         
-        if user_id not in active_bots:
-            return jsonify({'error': 'No active trading bot found'}), 404
+        # Update bot configuration status
+        db = firestore.client()
+        bot_config_ref = db.collection('bot_configs').document(user_id)
+        bot_config = bot_config_ref.get()
         
-        # Stop bot
-        bot = active_bots[user_id]
-        import asyncio
-        asyncio.run(bot.stop())
+        if not bot_config.exists or bot_config.to_dict().get('status') != 'configured':
+            return https_fn.Response(json.dumps({'error': 'No active trading bot configuration found'}), status=404)
         
-        del active_bots[user_id]
+        # Update status to stopped
+        bot_config_ref.update({
+            'status': 'stopped',
+            'updated_at': firestore.SERVER_TIMESTAMP
+        })
         
-        return jsonify({
-            'status': 'success',
-            'message': 'Live trading bot stopped'
-        }), 200
+        logging.info(f"[LiveTradingBot] Bot stopped for user {user_id}")
+        
+        return https_fn.Response(
+            json.dumps({
+                'status': 'success',
+                'message': 'Trading bot configuration cleared'
+            }),
+            status=200
+        )
         
     except Exception as e:
         logging.error(f"Error stopping live trading bot: {e}", exc_info=True)
-        return jsonify({'error': str(e)}), 500
+        return https_fn.Response(json.dumps({'error': str(e)}), status=500)

@@ -1,5 +1,6 @@
 
 "use client";
+// Unified Dashboard - No Tabs - v3.0
 
 import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
@@ -14,7 +15,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Skeleton } from "@/components/ui/skeleton";
 import { AnimatePresence, motion } from "framer-motion";
 import { useToast } from "@/hooks/use-toast";
 import { Bell, ArrowUp, ArrowDown } from "lucide-react";
@@ -68,6 +69,7 @@ export function LiveAlertsDashboard() {
   const [openPositions, setOpenPositions] = useState<Map<string, OpenPosition>>(new Map());
   const [livePrices, setLivePrices] = useState<Map<string, number>>(new Map());
   const [isLoadingPrices, setIsLoadingPrices] = useState(true);
+  const [isMounted, setIsMounted] = useState(false);
   const { toast } = useToast();
   const { firebaseUser } = useAuth();
   const angelStatus = useAngelOneStatus();
@@ -234,6 +236,11 @@ export function LiveAlertsDashboard() {
     return () => clearInterval(signalGeneratorInterval);
   }, [addAlert, openPositions.size, livePrices]);
 
+  // Client-side mount guard
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
 
   const getBadgeVariant = (signal: Alert["signal_type"]) => {
     switch (signal) {
@@ -247,6 +254,19 @@ export function LiveAlertsDashboard() {
       default: return "outline";
     }
   };
+
+  // Show skeleton loader until mounted on client side
+  if (!isMounted) {
+    return (
+      <div className="space-y-6">
+        <header>
+          <Skeleton className="h-10 w-96" />
+          <Skeleton className="h-4 w-[500px] mt-2" />
+        </header>
+        <Skeleton className="h-96 w-full" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -289,107 +309,99 @@ export function LiveAlertsDashboard() {
         </Card>
       )}
       
-      <Tabs defaultValue="trading" className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="trading">Trading</TabsTrigger>
-          <TabsTrigger value="positions">Positions</TabsTrigger>
-          <TabsTrigger value="orders">Orders</TabsTrigger>
-          <TabsTrigger value="alerts">Alerts</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="trading" className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-2">
-            <WebSocketControls />
-            <TradingBotControls />
-          </div>
-          <OrderManager />
-        </TabsContent>
-
-        <TabsContent value="positions">
+      {/* Control Panel - Always Visible */}
+      <div className="grid gap-4 md:grid-cols-2">
+        <WebSocketControls />
+        <TradingBotControls />
+      </div>
+      
+      {/* Unified Dashboard - All Sections Always Visible */}
+      <div className="space-y-4">
+        {/* Trading Controls */}
+        <OrderManager />
+        
+        {/* Positions and Orders Side by Side */}
+        <div className="grid gap-4 md:grid-cols-2">
           <PositionsMonitor />
-        </TabsContent>
-
-        <TabsContent value="orders">
           <OrderBook />
-        </TabsContent>
-
-        <TabsContent value="alerts">
-          <Card>
-            <CardHeader>
-              <CardTitle>Triggered Signals</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="overflow-hidden rounded-md border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Time</TableHead>
-                      <TableHead>Ticker</TableHead>
-                      <TableHead>Type</TableHead>
-                      <TableHead>Signal</TableHead>
-                      <TableHead>Price</TableHead>
-                      <TableHead>Confidence/P&L</TableHead>
-                      <TableHead>Rationale</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    <AnimatePresence initial={false}>
-                      {alerts.map((alert) => (
-                        <motion.tr
-                          key={alert.id}
-                          layout
-                          initial={{ opacity: 0, y: -20, scale: 0.95 }}
-                          animate={{ opacity: 1, y: 0, scale: 1 }}
-                          exit={{ opacity: 0, scale: 0.95 }}
-                          transition={{ duration: 0.5, ease: "easeInOut" }}
-                          className="hover:bg-muted/50"
-                        >
-                          <TableCell className="w-[120px]">
-                            {alert.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+        </div>
+        
+        {/* Live Alerts/Signals Table */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Live Trading Signals</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-hidden rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Time</TableHead>
+                    <TableHead>Ticker</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead>Signal</TableHead>
+                    <TableHead>Price</TableHead>
+                    <TableHead>Confidence/P&L</TableHead>
+                    <TableHead>Rationale</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  <AnimatePresence initial={false}>
+                    {alerts.map((alert) => (
+                      <motion.tr
+                        key={alert.id}
+                        layout
+                        initial={{ opacity: 0, y: -20, scale: 0.95 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.95 }}
+                        transition={{ duration: 0.5, ease: "easeInOut" }}
+                        className="hover:bg-muted/50"
+                      >
+                        <TableCell className="w-[120px]">
+                          {alert.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                        </TableCell>
+                        <TableCell className="font-medium">
+                          <Link href={`/analysis/${alert.ticker}`} className="hover:underline text-primary">
+                            {alert.ticker}
+                          </Link>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={alert.type === "BUY" ? "outline" : "secondary"} className={alert.type === 'BUY' ? 'border-green-500 text-green-500' : 'border-red-500 text-red-500'}>
+                            {alert.type}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={getBadgeVariant(alert.signal_type)}
+                            className={alert.signal_type === "Profit Target" ? "bg-green-600/20 text-green-800 border-green-600/30" : ""}
+                          >{alert.signal_type}</Badge>
+                        </TableCell>
+                        <TableCell>{alert.price.toFixed(2)}</TableCell>
+                        <TableCell>
+                          {alert.type === 'BUY' && alert.confidence ? (
+                             <span className="font-semibold text-green-600">{(alert.confidence * 100).toFixed(0)}%</span>
+                          ) : alert.pnl ? (
+                            <span className={`font-semibold ${alert.pnl > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                              {alert.pnl > 0 ? '+' : ''}{alert.pnl.toFixed(2)}%
+                            </span>
+                          ) : '-'}
+                        </TableCell>
+                        <TableCell className="max-w-sm truncate">{alert.rationale}</TableCell>
+                      </motion.tr>
+                    ))}
+                  </AnimatePresence>
+                  {alerts.length === 0 && (
+                      <TableRow>
+                          <TableCell colSpan={7} className="text-center h-24">
+                              Waiting for market signals...
                           </TableCell>
-                          <TableCell className="font-medium">
-                            <Link href={`/analysis/${alert.ticker}`} className="hover:underline text-primary">
-                              {alert.ticker}
-                            </Link>
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant={alert.type === "BUY" ? "outline" : "secondary"} className={alert.type === 'BUY' ? 'border-green-500 text-green-500' : 'border-red-500 text-red-500'}>
-                              {alert.type}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant={getBadgeVariant(alert.signal_type)}
-                              className={alert.signal_type === "Profit Target" ? "bg-green-600/20 text-green-800 border-green-600/30" : ""}
-                            >{alert.signal_type}</Badge>
-                          </TableCell>
-                          <TableCell>{alert.price.toFixed(2)}</TableCell>
-                          <TableCell>
-                            {alert.type === 'BUY' && alert.confidence ? (
-                               <span className="font-semibold text-green-600">{(alert.confidence * 100).toFixed(0)}%</span>
-                            ) : alert.pnl ? (
-                              <span className={`font-semibold ${alert.pnl > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                {alert.pnl > 0 ? '+' : ''}{alert.pnl.toFixed(2)}%
-                              </span>
-                            ) : '-'}
-                          </TableCell>
-                          <TableCell className="max-w-sm truncate">{alert.rationale}</TableCell>
-                        </motion.tr>
-                      ))}
-                    </AnimatePresence>
-                    {alerts.length === 0 && (
-                        <TableRow>
-                            <TableCell colSpan={7} className="text-center h-24">
-                                Waiting for market signals...
-                            </TableCell>
-                        </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+                      </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }

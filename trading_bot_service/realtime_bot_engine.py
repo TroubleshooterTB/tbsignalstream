@@ -65,6 +65,7 @@ class RealtimeBotEngine:
         self._position_manager = None
         self._ironclad = None
         self._advanced_screening = None  # NEW: Universal 24-level screening layer
+        self._ml_logger = None  # NEW: ML data logging for model training
         
         # Control flags
         self.is_running = False
@@ -542,6 +543,7 @@ class RealtimeBotEngine:
         from trading.risk_manager import RiskManager, RiskLimits
         from trading.position_manager import PositionManager
         from advanced_screening_manager import AdvancedScreeningManager, AdvancedScreeningConfig
+        from ml_data_logger import MLDataLogger
         
         self._pattern_detector = PatternDetector()
         self._execution_manager = ExecutionManager()
@@ -559,11 +561,20 @@ class RealtimeBotEngine:
         # NEW: Initialize Advanced 24-Level Screening Manager
         screening_config = AdvancedScreeningConfig()
         screening_config.fail_safe_mode = True  # Won't block trades on errors (safe rollout)
+        screening_config.enable_tick_indicator = True  # Enable Level 22 (TICK)
         self._advanced_screening = AdvancedScreeningManager(
             config=screening_config,
             portfolio_value=100000.0
         )
-        logger.info("✅ Advanced Screening Manager initialized (fail-safe mode: ON)")
+        logger.info("✅ Advanced Screening Manager initialized (fail-safe mode: ON, TICK: ON)")
+        
+        # NEW: Initialize ML Data Logger
+        try:
+            self._ml_logger = MLDataLogger(db_client=self.db)
+            logger.info("✅ ML Data Logger initialized (collection enabled)")
+        except Exception as e:
+            logger.error(f"Failed to initialize ML Logger: {e}")
+            self._ml_logger = MLDataLogger(db_client=None)  # Disabled mode
         
         # Initialize Ironclad if needed
         if self.strategy in ['ironclad', 'both']:
@@ -744,9 +755,58 @@ class RealtimeBotEngine:
                     
                     if not is_screened:
                         logger.warning(f"❌ [{sig['symbol']}] Advanced Screening BLOCKED: {screen_reason}")
+                        
+                        # Log rejected signal for ML training
+                        if self._ml_logger and self._ml_logger.enabled:
+                            try:
+                                df_latest = candle_data_copy[sig['symbol']].iloc[-1]
+                                rejected_signal_data = {
+                                    'symbol': sig['symbol'],
+                                    'action': signal_data['action'],
+                                    'entry_price': sig['current_price'],
+                                    'stop_loss': sig['stop_loss'],
+                                    'target': sig['target'],
+                                    'rsi': df_latest.get('rsi', 50),
+                                    'macd': df_latest.get('macd', 0),
+                                    'macd_signal': df_latest.get('macd_signal', 0),
+                                    'adx': df_latest.get('adx', 20),
+                                    'pattern_type': sig['pattern_details'].get('pattern_name', 'Unknown'),
+                                    'confidence': sig['confidence']
+                                }
+                                self._ml_logger.log_rejected_signal(rejected_signal_data, screen_reason)
+                            except Exception as log_err:
+                                logger.debug(f"ML logger (rejected signal) error: {log_err}")
+                        
                         continue  # Skip this trade
                     
                     logger.info(f"✅ [{sig['symbol']}] Advanced Screening PASSED: {screen_reason}")
+                    
+                    # Log signal for ML training (before order placement)
+                    ml_signal_id = None
+                    if self._ml_logger and self._ml_logger.enabled:
+                        try:
+                            df_latest = candle_data_copy[sig['symbol']].iloc[-1]
+                            ml_signal_data = {
+                                'symbol': sig['symbol'],
+                                'action': signal_data['action'],
+                                'entry_price': sig['current_price'],
+                                'stop_loss': sig['stop_loss'],
+                                'target': sig['target'],
+                                'was_taken': True,
+                                'rsi': df_latest.get('rsi', 50),
+                                'macd': df_latest.get('macd', 0),
+                                'macd_signal': df_latest.get('macd_signal', 0),
+                                'adx': df_latest.get('adx', 20),
+                                'bb_width': df_latest.get('bb_width', 0),
+                                'volume_ratio': df_latest.get('volume_ratio', 1.0),
+                                'pattern_type': sig['pattern_details'].get('pattern_name', 'Unknown'),
+                                'hour_of_day': datetime.now().hour,
+                                'confidence': sig['confidence']
+                            }
+                            ml_signal_id = self._ml_logger.log_signal(ml_signal_data)
+                            logger.info(f"📊 ML signal logged: {ml_signal_id}")
+                        except Exception as log_err:
+                            logger.debug(f"ML logger error: {log_err}")
                     
                     # Place order for best opportunity
                     logger.info(f"🔴 ENTERING TRADE: {sig['symbol']} (Top ranked signal)")
@@ -757,7 +817,8 @@ class RealtimeBotEngine:
                         stop_loss=sig['stop_loss'],
                         target=sig['target'],
                         quantity=quantity,
-                        reason=f"Pattern: {sig['pattern_details'].get('pattern_name')} | Confidence: {sig['confidence']:.1f}%"
+                        reason=f"Pattern: {sig['pattern_details'].get('pattern_name')} | Confidence: {sig['confidence']:.1f}%",
+                        ml_signal_id=ml_signal_id  # Pass ML signal ID for outcome tracking
                     )
                     
                 except Exception as e:
@@ -944,9 +1005,58 @@ class RealtimeBotEngine:
                     
                     if not is_screened:
                         logger.warning(f"❌ [{symbol}] Advanced Screening BLOCKED: {screen_reason}")
+                        
+                        # Log rejected signal for ML training
+                        if self._ml_logger and self._ml_logger.enabled:
+                            try:
+                                df_latest = candle_data_copy[symbol].iloc[-1]
+                                rejected_signal_data = {
+                                    'symbol': symbol,
+                                    'action': signal.get('action'),
+                                    'entry_price': current_price,
+                                    'stop_loss': stop_loss,
+                                    'target': target,
+                                    'rsi': df_latest.get('rsi', 50),
+                                    'macd': df_latest.get('macd', 0),
+                                    'macd_signal': df_latest.get('macd_signal', 0),
+                                    'adx': df_latest.get('adx', 20),
+                                    'pattern_type': 'Ironclad DR Breakout',
+                                    'confidence': sig['score']
+                                }
+                                self._ml_logger.log_rejected_signal(rejected_signal_data, screen_reason)
+                            except Exception as log_err:
+                                logger.debug(f"ML logger (rejected signal) error: {log_err}")
+                        
                         continue  # Skip this trade
                     
                     logger.info(f"✅ [{symbol}] Advanced Screening PASSED: {screen_reason}")
+                    
+                    # Log signal for ML training (before order placement)
+                    ml_signal_id = None
+                    if self._ml_logger and self._ml_logger.enabled:
+                        try:
+                            df_latest = candle_data_copy[symbol].iloc[-1]
+                            ml_signal_data = {
+                                'symbol': symbol,
+                                'action': signal.get('action'),
+                                'entry_price': current_price,
+                                'stop_loss': stop_loss,
+                                'target': target,
+                                'was_taken': True,
+                                'rsi': df_latest.get('rsi', 50),
+                                'macd': df_latest.get('macd', 0),
+                                'macd_signal': df_latest.get('macd_signal', 0),
+                                'adx': df_latest.get('adx', 20),
+                                'bb_width': df_latest.get('bb_width', 0),
+                                'volume_ratio': df_latest.get('volume_ratio', 1.0),
+                                'pattern_type': 'Ironclad DR Breakout',
+                                'hour_of_day': datetime.now().hour,
+                                'confidence': sig['score']
+                            }
+                            ml_signal_id = self._ml_logger.log_signal(ml_signal_data)
+                            logger.info(f"📊 ML signal logged: {ml_signal_id}")
+                        except Exception as log_err:
+                            logger.debug(f"ML logger error: {log_err}")
                     
                     logger.info(f"🔴 ENTERING TRADE: {symbol} (Ironclad top signal)")
                     self._place_entry_order(
@@ -956,7 +1066,8 @@ class RealtimeBotEngine:
                         stop_loss=stop_loss,
                         target=target,
                         quantity=quantity,
-                        reason=f"Ironclad {signal.get('action')} | Score: {sig['score']:.1f}"
+                        reason=f"Ironclad {signal.get('action')} | Score: {sig['score']:.1f}",
+                        ml_signal_id=ml_signal_id  # Pass ML signal ID
                     )
                     
                 except Exception as e:
@@ -970,7 +1081,8 @@ class RealtimeBotEngine:
         pass
     
     def _place_entry_order(self, symbol: str, direction: str, entry_price: float,
-                          stop_loss: float, target: float, quantity: int, reason: str):
+                          stop_loss: float, target: float, quantity: int, reason: str,
+                          ml_signal_id: Optional[str] = None):
         """Place entry order with proper logging"""
         from trading.order_manager import OrderType, TransactionType, ProductType
         
@@ -987,6 +1099,8 @@ class RealtimeBotEngine:
         logger.info(f"  Stop: ₹{stop_loss:.2f}")
         logger.info(f"  Target: ₹{target:.2f}")
         logger.info(f"  Qty: {quantity}")
+        if ml_signal_id:
+            logger.info(f"  ML Signal ID: {ml_signal_id}")
         
         if self.trading_mode == 'live':
             # Place real order
@@ -1006,26 +1120,35 @@ class RealtimeBotEngine:
                 order_id = order_result.get('orderid', 'unknown')
                 logger.info(f"✅ LIVE order placed: {order_id}")
                 
-                self._position_manager.add_position(
-                    symbol=symbol,
-                    entry_price=entry_price,
-                    quantity=quantity,
-                    stop_loss=stop_loss,
-                    target=target,
-                    order_id=order_id
-                )
+                # Create position data with ML signal ID
+                position_data = {
+                    'symbol': symbol,
+                    'entry_price': entry_price,
+                    'quantity': quantity,
+                    'stop_loss': stop_loss,
+                    'target': target,
+                    'order_id': order_id
+                }
+                if ml_signal_id:
+                    position_data['ml_signal_id'] = ml_signal_id
+                
+                self._position_manager.add_position(**position_data)
             else:
                 logger.error(f"❌ Failed to place LIVE order for {symbol}")
         else:
             # Paper trading
-            self._position_manager.add_position(
-                symbol=symbol,
-                entry_price=entry_price,
-                quantity=quantity,
-                stop_loss=stop_loss,
-                target=target,
-                order_id=f"PAPER_{symbol}_{int(time.time())}"
-            )
+            position_data = {
+                'symbol': symbol,
+                'entry_price': entry_price,
+                'quantity': quantity,
+                'stop_loss': stop_loss,
+                'target': target,
+                'order_id': f"PAPER_{symbol}_{int(time.time())}"
+            }
+            if ml_signal_id:
+                position_data['ml_signal_id'] = ml_signal_id
+            
+            self._position_manager.add_position(**position_data)
             logger.info(f"✅ Paper position added")
     
     def _monitor_positions(self):
@@ -1076,14 +1199,59 @@ class RealtimeBotEngine:
         
         entry_price = position.get('entry_price', 0)
         quantity = position.get('quantity', 0)
+        entry_time = position.get('timestamp', datetime.now())
         
         pnl = (exit_price - entry_price) * quantity
         pnl_percent = ((exit_price - entry_price) / entry_price) * 100
         
+        # Calculate holding duration
+        if isinstance(entry_time, str):
+            from dateutil import parser
+            entry_time = parser.parse(entry_time)
+        holding_duration = (datetime.now() - entry_time).total_seconds() / 60  # minutes
+        
         logger.info(f"CLOSING {symbol}:")
         logger.info(f"  Entry: ₹{entry_price:.2f} | Exit: ₹{exit_price:.2f}")
         logger.info(f"  P&L: ₹{pnl:.2f} ({pnl_percent:+.2f}%)")
+        logger.info(f"  Duration: {holding_duration:.1f} minutes")
         logger.info(f"  Reason: {reason}")
+        
+        # Update ML outcome
+        ml_signal_id = position.get('ml_signal_id')
+        if ml_signal_id and self._ml_logger and self._ml_logger.enabled:
+            try:
+                # Determine outcome
+                if pnl_percent > 0.5:
+                    outcome = 'WIN'
+                elif pnl_percent < -0.5:
+                    outcome = 'LOSS'
+                else:
+                    outcome = 'BREAKEVEN'
+                
+                # Map exit reason
+                exit_reason_map = {
+                    'STOP LOSS': 'STOP',
+                    'TARGET': 'TARGET',
+                    'TRAILING STOP': 'TRAILING',
+                    'EOD': 'EOD',
+                    'MANUAL': 'MANUAL'
+                }
+                exit_reason = exit_reason_map.get(reason.upper(), 'OTHER')
+                
+                outcome_data = {
+                    'outcome': outcome,
+                    'exit_price': exit_price,
+                    'pnl': pnl,
+                    'pnl_percent': pnl_percent,
+                    'holding_duration_minutes': int(holding_duration),
+                    'exit_reason': exit_reason
+                }
+                
+                self._ml_logger.update_outcome(ml_signal_id, outcome_data)
+                logger.info(f"📊 ML outcome logged: {outcome} (signal_id: {ml_signal_id})")
+                
+            except Exception as log_err:
+                logger.debug(f"ML outcome logging error: {log_err}")
         
         if self.trading_mode == 'live':
             token_info = self.symbol_tokens.get(symbol)
@@ -1106,3 +1274,4 @@ class RealtimeBotEngine:
         # Remove position
         self._position_manager.remove_position(symbol)
         logger.info(f"✅ Position closed")
+

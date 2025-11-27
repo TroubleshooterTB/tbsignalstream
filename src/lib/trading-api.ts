@@ -92,12 +92,14 @@ export const tradingBotApi = {
   
   status: async () => {
     try {
-      // Call Cloud Run service directly for status
-      const TRADING_BOT_SERVICE_URL = 'https://trading-bot-service-818546654122.us-central1.run.app';
+      // Return default status if user not authenticated
       const user = auth.currentUser;
       if (!user) {
-        throw new Error('User not authenticated');
+        return { running: false, status: 'stopped' };
       }
+      
+      // Call Cloud Run service directly for status
+      const TRADING_BOT_SERVICE_URL = 'https://trading-bot-service-818546654122.us-central1.run.app';
       const idToken = await user.getIdToken();
       
       const response = await fetch(`${TRADING_BOT_SERVICE_URL}/status`, {
@@ -109,13 +111,14 @@ export const tradingBotApi = {
       });
       
       if (!response.ok) {
-        throw new Error(`Status check failed: ${response.statusText}`);
+        console.warn(`Bot status check failed: ${response.statusText}`);
+        return { running: false, status: 'stopped' };
       }
       
       return response.json();
     } catch (error: any) {
       console.error('Error fetching bot status:', error);
-      return { running: false };
+      return { running: false, status: 'stopped' };
     }
   },
 };

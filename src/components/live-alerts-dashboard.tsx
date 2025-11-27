@@ -214,56 +214,69 @@ export function LiveAlertsDashboard() {
     return () => clearInterval(positionManagerInterval);
   }, [openPositions, addAlert, livePrices]);
 
+  // 🔥 LISTEN TO REAL SIGNALS FROM FIRESTORE (bot-generated)
   useEffect(() => {
-    // Generate BUY signals using REAL live prices for ALL 50 Nifty stocks
-    const signalGeneratorInterval = setInterval(() => {
-      if (alertCounter < initialBuySignals.length && openPositions.size < 10 && livePrices.size > 0) {
-        const newAlertData = initialBuySignals[alertCounter];
-        
-        // Use REAL live price from Angel One instead of hardcoded price
-        const realPrice = livePrices.get(newAlertData.ticker) || newAlertData.price;
-        
-        // Skip if no real price available
-        if (realPrice === 0) {
-          alertCounter++;
-          return;
-        }
-        
-        const signalId = (alertCounter + 1).toString();
-        
-        if (newAlertData.confidence && newAlertData.confidence > 0.85) {
-            const newAlert: Alert = {
-                ...newAlertData,
-                price: realPrice, // REAL LIVE PRICE
-                id: signalId,
-                timestamp: new Date(),
-                type: "BUY",
-            };
-            
-            addAlert(newAlert);
-    
-            const risk_amount = realPrice * 0.015; // 1.5% risk
-            const newPosition: OpenPosition = {
-                signal_id: signalId,
-                ticker: newAlert.ticker,
-                entry_timestamp: newAlert.timestamp,
-                entry_price: realPrice, // REAL LIVE PRICE
-                initial_stop_loss: realPrice - risk_amount,
-                profit_target: realPrice + (risk_amount * 2),
-                current_trailing_stop: realPrice - risk_amount,
-                status: "open",
-            };
-    
-            setOpenPositions(prev => new Map(prev).set(newPosition.ticker, newPosition));
-        }
-        alertCounter++;
-      } else if (alertCounter >= initialBuySignals.length) {
-        clearInterval(signalGeneratorInterval);
-      }
-    }, 8000); // New BUY signal every 8 seconds
+    if (!firebaseUser) return;
 
-    return () => clearInterval(signalGeneratorInterval);
-  }, [addAlert, openPositions.size, livePrices]);
+    const { onSnapshot, collection, query, where, orderBy, limit } = require('firebase/firestore');
+    const { db } = require('@/lib/firebase');
+
+    console.log('[Dashboard] Setting up real-time signal listener...');
+
+    // Listen to trading signals from bot
+    const signalsQuery = query(
+      collection(db, 'trading_signals'),
+      where('user_id', '==', firebaseUser.uid),
+      where('status', '==', 'open'),
+      orderBy('timestamp', 'desc'),
+      limit(20)
+    );
+
+    const unsubscribe = onSnapshot(signalsQuery, (snapshot) => {
+      snapshot.docChanges().forEach((change) => {
+        if (change.type === 'added') {
+          const data = change.doc.data();
+          console.log('[Dashboard] New signal received:', data);
+
+          const newAlert: Alert = {
+            id: change.doc.id,
+            ticker: data.symbol,
+            price: data.price,
+            confidence: data.confidence || 0.95,
+            signal_type: data.signal_type as any,
+            rationale: data.rationale || 'Trading bot signal',
+            timestamp: data.timestamp?.toDate() || new Date(),
+            type: data.type as AlertType,
+          };
+
+          addAlert(newAlert);
+
+          // Create position if BUY signal
+          if (data.type === 'BUY') {
+            const newPosition: OpenPosition = {
+              signal_id: change.doc.id,
+              ticker: data.symbol,
+              entry_timestamp: newAlert.timestamp,
+              entry_price: data.price,
+              initial_stop_loss: data.stop_loss,
+              profit_target: data.target,
+              current_trailing_stop: data.stop_loss,
+              status: "open",
+            };
+
+            setOpenPositions(prev => new Map(prev).set(newPosition.ticker, newPosition));
+          }
+        }
+      });
+    }, (error) => {
+      console.error('[Dashboard] Signal listener error:', error);
+    });
+
+    return () => {
+      console.log('[Dashboard] Cleaning up signal listener');
+      unsubscribe();
+    };
+  }, [firebaseUser, addAlert]);
 
   // Client-side mount guard
   useEffect(() => {

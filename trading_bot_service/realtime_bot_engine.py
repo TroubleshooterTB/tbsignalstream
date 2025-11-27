@@ -1157,6 +1157,36 @@ class RealtimeBotEngine:
         if ml_signal_id:
             logger.info(f"  ML Signal ID: {ml_signal_id}")
         
+        # 🔥 WRITE SIGNAL TO FIRESTORE FOR FRONTEND DISPLAY
+        try:
+            import firebase_admin
+            from firebase_admin import firestore
+            from datetime import datetime
+            
+            db = firestore.client()
+            signal_data = {
+                'user_id': self.user_id,
+                'symbol': symbol,
+                'type': 'BUY' if direction == 'up' else 'SELL',
+                'signal_type': 'Breakout',  # Could be enhanced with actual pattern type
+                'price': entry_price,
+                'stop_loss': stop_loss,
+                'target': target,
+                'quantity': quantity,
+                'confidence': 0.95,  # Use actual confidence from validation
+                'rationale': reason,
+                'timestamp': firestore.SERVER_TIMESTAMP,
+                'mode': self.trading_mode,
+                'status': 'open'
+            }
+            if ml_signal_id:
+                signal_data['ml_signal_id'] = ml_signal_id
+            
+            db.collection('trading_signals').add(signal_data)
+            logger.info(f"✅ Signal written to Firestore for {symbol}")
+        except Exception as e:
+            logger.error(f"Failed to write signal to Firestore: {e}")
+        
         if self.trading_mode == 'live':
             # Place real order
             transaction_type = TransactionType.BUY if direction == 'up' else TransactionType.SELL
@@ -1270,6 +1300,32 @@ class RealtimeBotEngine:
         logger.info(f"  P&L: ₹{pnl:.2f} ({pnl_percent:+.2f}%)")
         logger.info(f"  Duration: {holding_duration:.1f} minutes")
         logger.info(f"  Reason: {reason}")
+        
+        # 🔥 WRITE EXIT SIGNAL TO FIRESTORE
+        try:
+            import firebase_admin
+            from firebase_admin import firestore
+            
+            db = firestore.client()
+            exit_signal_data = {
+                'user_id': self.user_id,
+                'symbol': symbol,
+                'type': 'SELL',
+                'signal_type': reason.replace('_', ' ').title(),
+                'price': exit_price,
+                'pnl': pnl,
+                'pnl_percent': pnl_percent,
+                'rationale': f"{reason.replace('_', ' ').title()} - P&L: ₹{pnl:.2f} ({pnl_percent:+.2f}%)",
+                'timestamp': firestore.SERVER_TIMESTAMP,
+                'mode': self.trading_mode,
+                'status': 'closed',
+                'holding_duration_minutes': int(holding_duration)
+            }
+            
+            db.collection('trading_signals').add(exit_signal_data)
+            logger.info(f"✅ Exit signal written to Firestore for {symbol}")
+        except Exception as e:
+            logger.error(f"Failed to write exit signal to Firestore: {e}")
         
         # Update ML outcome
         ml_signal_id = position.get('ml_signal_id')

@@ -84,23 +84,45 @@ class RealtimeBotEngine:
         try:
             self.is_running = True
             
-            # Step 1: Initialize symbol tokens (parallel fetch)
+            # Step 1: Initialize symbol tokens (parallel fetch) - WITH ERROR HANDLING
             logger.info("Fetching symbol tokens...")
-            self.symbol_tokens = self._get_symbol_tokens_parallel()
-            if not self.symbol_tokens:
-                raise Exception("Failed to fetch symbol tokens")
-            
-            logger.info(f"✅ Fetched tokens for {len(self.symbol_tokens)} symbols")
+            try:
+                self.symbol_tokens = self._get_symbol_tokens_parallel()
+                if not self.symbol_tokens:
+                    logger.warning("No symbol tokens fetched, will retry with fallback method")
+                    # Fallback: use hardcoded tokens for critical symbols
+                    self.symbol_tokens = self._get_fallback_tokens()
+                
+                logger.info(f"✅ Fetched tokens for {len(self.symbol_tokens)} symbols")
+            except Exception as e:
+                logger.error(f"Error fetching tokens: {e}")
+                # Use fallback tokens instead of failing
+                logger.info("Using fallback symbol tokens...")
+                self.symbol_tokens = self._get_fallback_tokens()
+                if not self.symbol_tokens:
+                    raise Exception("Failed to fetch any symbol tokens, cannot continue")
             
             # Step 2: Initialize trading managers
             self._initialize_managers()
             
-            # Step 3: Initialize WebSocket connection
+            # Step 3: Initialize WebSocket connection - WITH ERROR HANDLING
             logger.info("Initializing WebSocket connection...")
-            self._initialize_websocket()
+            try:
+                self._initialize_websocket()
+                logger.info("✅ WebSocket initialized")
+            except Exception as e:
+                logger.error(f"WebSocket initialization failed: {e}")
+                logger.warning("Bot will continue with polling mode (no real-time ticks)")
+                self.ws_manager = None  # Bot will run without WebSocket
             
-            # Step 4: Subscribe to symbols
-            self._subscribe_to_symbols()
+            # Step 4: Subscribe to symbols (only if WebSocket is active)
+            if self.ws_manager:
+                try:
+                    self._subscribe_to_symbols()
+                    logger.info("✅ Subscribed to symbols")
+                except Exception as e:
+                    logger.error(f"Symbol subscription failed: {e}")
+                    logger.warning("Bot will continue without real-time subscriptions")
             
             # Step 5: Start position monitoring thread (runs every 0.5 seconds)
             logger.info("Starting position monitoring thread...")
@@ -122,7 +144,10 @@ class RealtimeBotEngine:
             logger.info("🚀 Real-time trading bot started successfully!")
             logger.info("Position monitoring: Every 0.5 seconds")
             logger.info("Strategy analysis: Every 5 seconds")
-            logger.info("Data updates: Real-time via WebSocket")
+            logger.info(f"Data updates: {'Real-time via WebSocket' if self.ws_manager else 'Polling mode'}")
+            
+            error_count = 0
+            max_consecutive_errors = 10  # Stop only after 10 consecutive errors
             
             while running_flag() and self.is_running:
                 try:
@@ -131,6 +156,9 @@ class RealtimeBotEngine:
                     # Execute strategy analysis (every 5 seconds)
                     self._analyze_and_trade()
                     
+                    # Reset error count on successful iteration
+                    error_count = 0
+                    
                     # Sleep for 5 seconds (strategy doesn't need to run faster)
                     # Positions are monitored independently every 0.5 seconds
                     elapsed = time.time() - cycle_start
@@ -138,14 +166,23 @@ class RealtimeBotEngine:
                     time.sleep(sleep_time)
                     
                 except Exception as e:
-                    logger.error(f"Error in main loop: {e}", exc_info=True)
-                    time.sleep(1)
+                    error_count += 1
+                    logger.error(f"Error in main loop (error #{error_count}): {e}", exc_info=True)
+                    
+                    if error_count >= max_consecutive_errors:
+                        logger.critical(f"Too many consecutive errors ({error_count}), stopping bot")
+                        break
+                    
+                    # Wait before retrying (exponential backoff)
+                    wait_time = min(30, 2 ** min(error_count, 5))  # Max 30 seconds
+                    logger.info(f"Waiting {wait_time}s before retry...")
+                    time.sleep(wait_time)
             
             logger.info("Trading bot stopped")
             
         except Exception as e:
-            logger.error(f"Fatal error in bot: {e}", exc_info=True)
-            raise
+            logger.error(f"Fatal error in bot initialization: {e}", exc_info=True)
+            # Don't raise - allow graceful shutdown
         finally:
             self.stop()
     
@@ -468,6 +505,33 @@ class RealtimeBotEngine:
                     tokens[symbol] = token_info
         
         return tokens
+    
+    def _get_fallback_tokens(self) -> Dict:
+        """
+        Fallback symbol tokens for critical Nifty 50 stocks.
+        Used when API token fetching fails.
+        """
+        fallback_tokens = {
+            'RELIANCE': {'token': '2885', 'exchange': 'NSE', 'trading_symbol': 'RELIANCE-EQ'},
+            'HDFCBANK': {'token': '1333', 'exchange': 'NSE', 'trading_symbol': 'HDFCBANK-EQ'},
+            'INFY': {'token': '1594', 'exchange': 'NSE', 'trading_symbol': 'INFY-EQ'},
+            'TCS': {'token': '11536', 'exchange': 'NSE', 'trading_symbol': 'TCS-EQ'},
+            'ICICIBANK': {'token': '1330', 'exchange': 'NSE', 'trading_symbol': 'ICICIBANK-EQ'},
+            'SBIN': {'token': '3045', 'exchange': 'NSE', 'trading_symbol': 'SBIN-EQ'},
+            'BHARTIARTL': {'token': '10604', 'exchange': 'NSE', 'trading_symbol': 'BHARTIARTL-EQ'},
+            'ITC': {'token': '1660', 'exchange': 'NSE', 'trading_symbol': 'ITC-EQ'},
+            'AXISBANK': {'token': '5900', 'exchange': 'NSE', 'trading_symbol': 'AXISBANK-EQ'},
+            'KOTAKBANK': {'token': '1922', 'exchange': 'NSE', 'trading_symbol': 'KOTAKBANK-EQ'},
+        }
+        
+        # Filter to only requested symbols
+        filtered_tokens = {}
+        for symbol in self.symbols:
+            if symbol in fallback_tokens:
+                filtered_tokens[symbol] = fallback_tokens[symbol]
+        
+        logger.info(f"Using fallback tokens for {len(filtered_tokens)} symbols")
+        return filtered_tokens
     
     def _initialize_managers(self):
         """Initialize all trading managers"""

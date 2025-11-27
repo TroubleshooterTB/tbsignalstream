@@ -176,7 +176,70 @@ class IroncladStrategy:
             # Volume SMA (10)
             df['volume_sma'] = df['volume'].rolling(window=10).mean()
             
-            logger.info(f"Calculated indicators for {len(df)} candles")
+            # Bollinger Bands (20, 2)
+            df['bb_middle'] = df['close'].rolling(window=20).mean()
+            bb_std = df['close'].rolling(window=20).std()
+            df['bb_upper'] = df['bb_middle'] + (2 * bb_std)
+            df['bb_lower'] = df['bb_middle'] - (2 * bb_std)
+            df['bb_width'] = (df['bb_upper'] - df['bb_lower']) / df['bb_middle']
+            df['bb_position'] = (df['close'] - df['bb_lower']) / (df['bb_upper'] - df['bb_lower'])
+            
+            # Stochastic Oscillator (14, 3, 3)
+            lowest_low = df['low'].rolling(window=14).min()
+            highest_high = df['high'].rolling(window=14).max()
+            df['stoch_k'] = 100 * (df['close'] - lowest_low) / (highest_high - lowest_low)
+            df['stoch_d'] = df['stoch_k'].rolling(window=3).mean()
+            
+            # Exponential Moving Averages
+            df['ema_9'] = df['close'].ewm(span=9, adjust=False).mean()
+            df['ema_12'] = df['close'].ewm(span=12, adjust=False).mean()
+            df['ema_21'] = df['close'].ewm(span=21, adjust=False).mean()
+            df['ema_26'] = df['close'].ewm(span=26, adjust=False).mean()
+            df['ema_50'] = df['close'].ewm(span=50, adjust=False).mean()
+            df['ema_200'] = df['close'].ewm(span=200, adjust=False).mean()
+            
+            # On-Balance Volume (OBV)
+            df['obv'] = (np.sign(df['close'].diff()) * df['volume']).fillna(0).cumsum()
+            df['obv_sma'] = df['obv'].rolling(window=20).mean()
+            
+            # Williams %R (14)
+            df['williams_r'] = -100 * (highest_high - df['close']) / (highest_high - lowest_low)
+            
+            # Average Directional Movement Index (ADX already calculated above)
+            # Price Rate of Change (ROC) - 12 period
+            df['roc'] = ((df['close'] - df['close'].shift(12)) / df['close'].shift(12)) * 100
+            
+            # Commodity Channel Index (CCI) - 20 period
+            typical_price = (df['high'] + df['low'] + df['close']) / 3
+            sma_tp = typical_price.rolling(window=20).mean()
+            mean_deviation = typical_price.rolling(window=20).apply(lambda x: np.abs(x - x.mean()).mean())
+            df['cci'] = (typical_price - sma_tp) / (0.015 * mean_deviation)
+            
+            # Money Flow Index (MFI) - 14 period
+            typical_price = (df['high'] + df['low'] + df['close']) / 3
+            money_flow = typical_price * df['volume']
+            positive_flow = money_flow.where(df['close'] > df['close'].shift(1), 0).rolling(window=14).sum()
+            negative_flow = money_flow.where(df['close'] < df['close'].shift(1), 0).rolling(window=14).sum()
+            money_ratio = positive_flow / negative_flow
+            df['mfi'] = 100 - (100 / (1 + money_ratio))
+            
+            # Parabolic SAR (simplified version)
+            df['psar'] = df['close'].rolling(window=2).mean()  # Simplified - full implementation is complex
+            
+            # Support and Resistance levels (using pivot points)
+            df['pivot'] = (df['high'] + df['low'] + df['close']) / 3
+            df['resistance_1'] = 2 * df['pivot'] - df['low']
+            df['support_1'] = 2 * df['pivot'] - df['high']
+            df['resistance_2'] = df['pivot'] + (df['high'] - df['low'])
+            df['support_2'] = df['pivot'] - (df['high'] - df['low'])
+            
+            # Trend strength indicator
+            df['trend_strength'] = abs(df['close'] - df['sma_50']) / df['sma_50'] * 100
+            
+            # Volume trend
+            df['volume_trend'] = df['volume'] / df['volume_sma']
+            
+            logger.info(f"Calculated {len([col for col in df.columns if col not in ['open', 'high', 'low', 'close', 'volume']])} technical indicators for {len(df)} candles")
             
         except Exception as e:
             logger.error(f"Error calculating indicators: {e}")

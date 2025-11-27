@@ -893,22 +893,6 @@ class RealtimeBotEngine:
                     logger.error(f"Error placing Ironclad order for {sig['symbol']}: {e}", exc_info=True)
         else:
             logger.debug("No Ironclad signals found in this scan cycle")
-                
-                logger.info(f"✅ {symbol}: Ironclad signal - {signal.get('action')}")
-                
-                # Place order
-                self._place_entry_order(
-                    symbol=symbol,
-                    direction='up' if signal['action'] == 'BUY' else 'down',
-                    entry_price=signal.get('entry_price'),
-                    stop_loss=signal.get('stop_loss'),
-                    target=signal.get('target'),
-                    quantity=signal.get('quantity', 1),
-                    reason="Ironclad Strategy"
-                )
-                
-            except Exception as e:
-                logger.error(f"Error in Ironclad for {symbol}: {e}", exc_info=True)
     
     def _execute_dual_strategy(self):
         """Execute both strategies with dual confirmation"""

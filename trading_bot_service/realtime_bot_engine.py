@@ -644,12 +644,58 @@ class RealtimeBotEngine:
             if hasattr(self, '_eod_closed'):
                 delattr(self, '_eod_closed')
     
+    def _update_market_internals(self):
+        """
+        Calculate and update NIFTY 50 advance/decline ratio for TICK indicator.
+        Uses real-time prices vs open prices from candle data.
+        """
+        try:
+            with self._lock:
+                candle_copy = self.candle_data.copy()
+                prices_copy = self.latest_prices.copy()
+            
+            advancing = declining = unchanged = 0
+            
+            for symbol in self.symbols:
+                # Need both candle data (for open price) and current price
+                if symbol not in candle_copy or symbol not in prices_copy:
+                    continue
+                
+                df = candle_copy[symbol]
+                if df.empty:
+                    continue
+                
+                # Get today's open price (first candle of the day)
+                open_price = float(df.iloc[0]['open'])
+                current_price = prices_copy[symbol]
+                
+                # Calculate change threshold (0.1% to avoid noise)
+                threshold = open_price * 0.001
+                
+                if current_price > open_price + threshold:
+                    advancing += 1
+                elif current_price < open_price - threshold:
+                    declining += 1
+                else:
+                    unchanged += 1
+            
+            # Update advanced screening manager with real market internals
+            if self._advanced_screening and (advancing + declining + unchanged) > 0:
+                self._advanced_screening.update_tick_data(advancing, declining, unchanged)
+                logger.debug(f"📊 Market Internals: {advancing} ADV | {declining} DEC | {unchanged} UNCH")
+                
+        except Exception as e:
+            logger.error(f"Error updating market internals: {e}")
+    
     def _execute_pattern_strategy(self):
         """
         Execute pattern detection strategy with intelligent signal ranking.
         Scans all Nifty 50 stocks and selects trades with highest confidence.
         """
         from trading.order_manager import OrderType, TransactionType, ProductType
+        
+        # Update market internals BEFORE scanning (for TICK indicator)
+        self._update_market_internals()
         
         with self._lock:
             candle_data_copy = self.candle_data.copy()
@@ -676,6 +722,9 @@ class RealtimeBotEngine:
                 pattern_details = self._pattern_detector.scan(df)
                 if not pattern_details:
                     continue
+                
+                # Add symbol to pattern_details for fundamental checks
+                pattern_details['symbol'] = symbol
                 
                 # 30-point validation
                 is_valid = self._execution_manager.validate_trade_entry(df, pattern_details)
@@ -902,6 +951,9 @@ class RealtimeBotEngine:
         """
         from trading.order_manager import OrderType, TransactionType, ProductType
         
+        # Update market internals BEFORE scanning (for TICK indicator)
+        self._update_market_internals()
+        
         with self._lock:
             candle_data_copy = self.candle_data.copy()
             latest_prices_copy = self.latest_prices.copy()
@@ -931,6 +983,9 @@ class RealtimeBotEngine:
                 
                 if not signal or signal.get('action') == 'HOLD':
                     continue
+                
+                # Add symbol to signal for fundamental checks
+                signal['symbol'] = symbol
                 
                 # NEW: Apply 30-Point Grandmaster Checklist to Ironclad signals
                 logger.info(f"🔍 [{symbol}] Ironclad signal - applying 30-Point Checklist...")

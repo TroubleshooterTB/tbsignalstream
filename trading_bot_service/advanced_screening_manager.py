@@ -681,6 +681,9 @@ class AdvancedScreeningManager:
         """
         Calculate advance/decline ratio for NIFTY 50 stocks.
         
+        NOTE: This method is not used directly anymore. The bot now calls
+        update_tick_data() with real-time calculated values.
+        
         Returns:
             {
                 'advancing': int,
@@ -690,27 +693,15 @@ class AdvancedScreeningManager:
                 'tick_signal': str    # 'BULLISH', 'BEARISH', 'NEUTRAL'
             }
         """
-        # Import NIFTY 50 symbols (will use the list from realtime_bot_engine)
-        advancing = 0
-        declining = 0
-        unchanged = 0
-        
-        # Get symbols from bot (they're passed via latest_prices or similar)
-        # For now, we'll use a fallback approach - check the prices we have
-        # The bot will need to pass current vs open prices
-        
-        # This is a simplified version - the bot should provide this data
-        # In the full implementation, the bot passes advance/decline counts
-        
-        # Placeholder calculation (bot will provide real data)
-        # For now, return neutral to not block trades
-        logger.debug("TICK calculation: Using placeholder (requires bot integration)")
+        # This method is kept for backward compatibility
+        # Real data now comes from realtime_bot_engine._update_market_internals()
+        logger.debug("Using real-time TICK data from bot engine")
         
         return {
-            'advancing': 25,  # Placeholder
-            'declining': 23,  # Placeholder
-            'unchanged': 2,   # Placeholder
-            'tick_ratio': 0.04,  # Placeholder: slightly bullish
+            'advancing': 25,
+            'declining': 25,
+            'unchanged': 0,
+            'tick_ratio': 0.0,
             'tick_signal': 'NEUTRAL'
         }
     

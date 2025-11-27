@@ -24,7 +24,104 @@ class MacroChecker:
 
     def __init__(self):
         """Initializes the Macro Checker."""
-        pass
+        self.fundamental_fetcher = None
+        if FUNDAMENTALS_AVAILABLE:
+            try:
+                self.fundamental_fetcher = get_fundamental_fetcher()
+            except Exception as e:
+                print(f"Warning: Could not initialize fundamental fetcher: {e}")
+        
+    # ========================================================================
+    # Methods called by ExecutionManager (check_1, check_2, etc.)
+    # ========================================================================
+    
+    def check_1_overall_market_trend(self, data: pd.DataFrame, pattern_details: Dict[str, Any]) -> bool:
+        """Check 1: Overall market trend alignment"""
+        # Simplified: Check if price above 50 SMA
+        if 'sma_50' in data.columns and len(data) > 50:
+            return float(data['close'].iloc[-1]) > float(data['sma_50'].iloc[-1])
+        return True  # Pass if no data
+    
+    def check_2_sector_strength(self, data: pd.DataFrame, pattern_details: Dict[str, Any]) -> bool:
+        """Check 2: Sector strength confirmation"""
+        # Simplified: Pass for now (would need sector index data)
+        return True
+    
+    def check_3_economic_calendar_impact(self, data: pd.DataFrame, pattern_details: Dict[str, Any]) -> bool:
+        """
+        Check 3: Fundamental strength & economic calendar impact.
+        NOW USES REAL FUNDAMENTAL DATA!
+        """
+        if not self.fundamental_fetcher:
+            return True  # Pass if fetcher unavailable
+        
+        try:
+            # Extract symbol from pattern_details or data
+            symbol = pattern_details.get('symbol', '')
+            if not symbol and hasattr(data, 'name'):
+                symbol = data.name
+            
+            if not symbol:
+                return True  # Can't check without symbol
+            
+            # Fetch fundamentals
+            fundamentals = self.fundamental_fetcher.get_fundamentals(symbol)
+            
+            if not fundamentals:
+                return True  # Pass if data unavailable
+            
+            # Check if fundamentally strong
+            is_strong = fundamentals.get('is_fundamentally_strong', True)
+            reason = fundamentals.get('reason', 'Unknown')
+            
+            if not is_strong:
+                print(f"❌ Check 3 FAILED: {symbol} - {reason}")
+                return False
+            
+            print(f"✅ Check 3 PASSED: {symbol} - {reason}")
+            print(f"   PE: {fundamentals.get('pe_ratio', 0):.1f}, "
+                  f"D/E: {fundamentals.get('debt_to_equity', 0):.2f}, "
+                  f"ROE: {fundamentals.get('roe', 0):.1f}%")
+            
+            return True
+            
+        except Exception as e:
+            print(f"Error in fundamental check: {e}")
+            return True  # Pass on error (don't block trades)
+    
+    def check_4_intermarket_analysis(self, data: pd.DataFrame, pattern_details: Dict[str, Any]) -> bool:
+        """Check 4: Intermarket analysis confirmation"""
+        return True  # Pass for now
+    
+    def check_5_geopolitical_events(self, data: pd.DataFrame, pattern_details: Dict[str, Any]) -> bool:
+        """Check 5: Geopolitical events assessment"""
+        return True  # Pass for now
+    
+    def check_6_liquidity_conditions(self, data: pd.DataFrame, pattern_details: Dict[str, Any]) -> bool:
+        """Check 6: Liquidity conditions assessment"""
+        # Simple check: Ensure volume is present
+        if 'volume' in data.columns:
+            return data['volume'].iloc[-1] > 0
+        return True
+    
+    def check_7_volatility_regime(self, data: pd.DataFrame, pattern_details: Dict[str, Any]) -> bool:
+        """Check 7: Volatility regime confirmation"""
+        # Simple check: Ensure ATR exists (not too volatile)
+        if 'atr' in data.columns:
+            atr = data['atr'].iloc[-1]
+            price = data['close'].iloc[-1]
+            atr_pct = (atr / price) * 100
+            # Reject if ATR > 5% (extreme volatility)
+            return atr_pct < 5.0
+        return True
+    
+    def check_8_major_news_announcements(self, data: pd.DataFrame, pattern_details: Dict[str, Any]) -> bool:
+        """Check 8: Major news announcements check"""
+        return True  # Pass for now
+    
+    # ========================================================================
+    # Original run_all_checks methods (for backward compatibility)
+    # ========================================================================
 
     def run_all_checks(self, stock_data: pd.DataFrame, nifty_data: pd.DataFrame, sector_data: pd.DataFrame, sentiment_context: Dict[str, Any], direction: str) -> Tuple[bool, str]:
         """

@@ -64,6 +64,7 @@ class RealtimeBotEngine:
         self._risk_manager = None
         self._position_manager = None
         self._ironclad = None
+        self._advanced_screening = None  # NEW: Universal 24-level screening layer
         
         # Control flags
         self.is_running = False
@@ -540,6 +541,7 @@ class RealtimeBotEngine:
         from trading.order_manager import OrderManager
         from trading.risk_manager import RiskManager, RiskLimits
         from trading.position_manager import PositionManager
+        from advanced_screening_manager import AdvancedScreeningManager, AdvancedScreeningConfig
         
         self._pattern_detector = PatternDetector()
         self._execution_manager = ExecutionManager()
@@ -553,6 +555,15 @@ class RealtimeBotEngine:
         )
         self._risk_manager = RiskManager(portfolio_value=100000.0, risk_limits=risk_limits)
         self._position_manager = PositionManager()
+        
+        # NEW: Initialize Advanced 24-Level Screening Manager
+        screening_config = AdvancedScreeningConfig()
+        screening_config.fail_safe_mode = True  # Won't block trades on errors (safe rollout)
+        self._advanced_screening = AdvancedScreeningManager(
+            config=screening_config,
+            portfolio_value=100000.0
+        )
+        logger.info("✅ Advanced Screening Manager initialized (fail-safe mode: ON)")
         
         # Initialize Ironclad if needed
         if self.strategy in ['ironclad', 'both']:
@@ -712,6 +723,31 @@ class RealtimeBotEngine:
                     quantity = int(max_risk / risk_per_share) if risk_per_share > 0 else 1
                     quantity = max(1, min(quantity, 100))
                     
+                    # NEW: Advanced 24-Level Screening (before order placement)
+                    logger.info(f"🔍 [{sig['symbol']}] Running Advanced 24-Level Screening...")
+                    signal_data = {
+                        'action': 'BUY' if sig['pattern_details'].get('breakout_direction', 'up') == 'up' else 'SELL',
+                        'entry_price': sig['current_price'],
+                        'stop_loss': sig['stop_loss'],
+                        'target': sig['target'],
+                        'pattern_name': sig['pattern_details'].get('pattern_name'),
+                        'score': sig['confidence']
+                    }
+                    
+                    is_screened, screen_reason = self._advanced_screening.validate_signal(
+                        symbol=sig['symbol'],
+                        signal_data=signal_data,
+                        df=candle_data_copy[sig['symbol']],
+                        current_positions=self._position_manager.get_all_positions(),
+                        current_price=sig['current_price']
+                    )
+                    
+                    if not is_screened:
+                        logger.warning(f"❌ [{sig['symbol']}] Advanced Screening BLOCKED: {screen_reason}")
+                        continue  # Skip this trade
+                    
+                    logger.info(f"✅ [{sig['symbol']}] Advanced Screening PASSED: {screen_reason}")
+                    
                     # Place order for best opportunity
                     logger.info(f"🔴 ENTERING TRADE: {sig['symbol']} (Top ranked signal)")
                     self._place_entry_order(
@@ -835,6 +871,15 @@ class RealtimeBotEngine:
                 if not signal or signal.get('action') == 'HOLD':
                     continue
                 
+                # NEW: Apply 30-Point Grandmaster Checklist to Ironclad signals
+                logger.info(f"🔍 [{symbol}] Ironclad signal - applying 30-Point Checklist...")
+                is_valid = self._execution_manager.validate_trade_entry(stock_df, signal)
+                if not is_valid:
+                    logger.warning(f"❌ [{symbol}] 30-Point Checklist FAILED - Ironclad signal rejected")
+                    continue
+                
+                logger.info(f"✅ [{symbol}] 30-Point Checklist PASSED for Ironclad signal")
+                
                 # Ironclad already provides confidence/score
                 ironclad_score = signal.get('score', 50)
                 
@@ -877,6 +922,31 @@ class RealtimeBotEngine:
                     max_risk = self._risk_manager.risk_limits.max_position_size_percent * self._risk_manager.portfolio_value
                     quantity = int(max_risk / risk_per_share) if risk_per_share > 0 else 1
                     quantity = max(1, min(quantity, 100))
+                    
+                    # NEW: Advanced 24-Level Screening (before order placement)
+                    logger.info(f"🔍 [{symbol}] Running Advanced 24-Level Screening...")
+                    signal_data = {
+                        'action': signal.get('action'),
+                        'entry_price': current_price,
+                        'stop_loss': stop_loss,
+                        'target': target,
+                        'pattern_name': 'Ironclad DR Breakout',
+                        'score': sig['score']
+                    }
+                    
+                    is_screened, screen_reason = self._advanced_screening.validate_signal(
+                        symbol=symbol,
+                        signal_data=signal_data,
+                        df=candle_data_copy[symbol],
+                        current_positions=self._position_manager.get_all_positions(),
+                        current_price=current_price
+                    )
+                    
+                    if not is_screened:
+                        logger.warning(f"❌ [{symbol}] Advanced Screening BLOCKED: {screen_reason}")
+                        continue  # Skip this trade
+                    
+                    logger.info(f"✅ [{symbol}] Advanced Screening PASSED: {screen_reason}")
                     
                     logger.info(f"🔴 ENTERING TRADE: {symbol} (Ironclad top signal)")
                     self._place_entry_order(

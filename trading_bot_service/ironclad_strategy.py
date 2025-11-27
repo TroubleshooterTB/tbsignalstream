@@ -571,7 +571,8 @@ class IroncladStrategy:
                 logger.info(f"[{symbol}] === SIGNAL GENERATED: {signal} ===")
                 
                 return {
-                    'signal': signal,
+                    'action': signal,  # Changed from 'signal' to 'action' for consistency
+                    'signal': signal,  # Keep for backward compatibility
                     'regime': regime,
                     'entry_price': round(entry_price, 2),
                     'stop_loss': stop_loss,
@@ -580,7 +581,13 @@ class IroncladStrategy:
                     'dr_low': round(dr_low, 2),
                     'atr': round(stock_df.iloc[-1].get('atr', 0), 2),
                     'rsi': round(stock_df.iloc[-1].get('rsi', 50), 2),
-                    'timestamp': datetime.now(self.ist_tz).isoformat()
+                    'score': 75.0,  # Default Ironclad score (can be refined)
+                    'timestamp': datetime.now(self.ist_tz).isoformat(),
+                    # NEW: Fields for 30-Point Checklist compatibility
+                    'breakout_direction': 'up' if signal == 'BUY' else 'down',
+                    'pattern_name': f'Ironclad DR Breakout ({signal})',
+                    'initial_stop_loss': stop_loss,
+                    'calculated_price_target': target,
                 }
             else:
                 logger.info(f"[{symbol}] No trigger. Regime={regime}, Signal={signal}")

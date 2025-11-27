@@ -546,7 +546,7 @@ class RealtimeBotEngine:
         from ml_data_logger import MLDataLogger
         
         self._pattern_detector = PatternDetector()
-        self._execution_manager = ExecutionManager()
+        self._execution_manager = ExecutionManager(api_key=self.api_key, jwt_token=self.jwt_token)
         self._order_manager = OrderManager(self.api_key, self.jwt_token)
         
         risk_limits = RiskLimits(

@@ -373,21 +373,168 @@ class AdvancedPriceActionAnalyzer:
         return current_range > recent_ranges * 1.2  # 20% larger than average
     
     def check_20_confluence_with_wave_count(self, data: pd.DataFrame, pattern_details: dict) -> bool:
-        """Check 20: Confluence with Elliott Wave Count"""
-        # Placeholder: Elliott Wave is complex, pass for now
-        return True
+        """
+        Check 20: Confluence with Elliott Wave Count
+        Simplified: Check for impulsive vs corrective wave structure
+        """
+        try:
+            if len(data) < 20:
+                return True
+            
+            # Simplified wave analysis: Check if we're in an impulsive move
+            # Look at the last 5 swings (highs/lows alternation)
+            closes = data['close'].tail(20)
+            
+            # Count higher highs and higher lows (bullish impulse)
+            # or lower highs and lower lows (bearish impulse)
+            direction = pattern_details.get('direction', 'up')
+            
+            # Simple momentum check: is price trending?
+            if 'sma_10' in data.columns and 'sma_20' in data.columns:
+                sma_10 = data['sma_10'].iloc[-1]
+                sma_20 = data['sma_20'].iloc[-1]
+                
+                if direction == 'up':
+                    # For bullish patterns, we want bullish wave structure
+                    if sma_10 < sma_20:
+                        print("❌ Check 20: Wave structure not aligned (10 SMA below 20 SMA)")
+                        return False
+                else:
+                    # For bearish patterns, we want bearish wave structure
+                    if sma_10 > sma_20:
+                        print("❌ Check 20: Wave structure not aligned (10 SMA above 20 SMA)")
+                        return False
+            
+            # Check momentum direction over last 10 bars
+            momentum_10 = closes.iloc[-1] - closes.iloc[-10] if len(closes) >= 10 else 0
+            
+            if direction == 'up' and momentum_10 < 0:
+                print(f"❌ Check 20: Negative momentum for bullish pattern ({momentum_10:.2f})")
+                return False
+            elif direction == 'down' and momentum_10 > 0:
+                print(f"❌ Check 20: Positive momentum for bearish pattern ({momentum_10:.2f})")
+                return False
+            
+            print("✅ Check 20: Wave structure aligned with pattern")
+            return True
+            
+        except Exception as e:
+            print(f"Check 20 error: {e}")
+            return True
     
     def check_21_pattern_on_multiple_timeframes(self, data: pd.DataFrame, pattern_details: dict) -> bool:
-        """Check 21: Pattern Confirmation on Multiple Timeframes"""
-        # Placeholder: Would need multi-timeframe data
-        # TODO: Implement when multi-timeframe data available
-        return True
+        """
+        Check 21: Pattern Confirmation on Multiple Timeframes
+        Uses higher timeframe trend alignment via longer SMAs
+        """
+        try:
+            # Since we don't have actual multi-timeframe data,
+            # we'll use different period SMAs as proxy for different timeframes
+            # 1-min chart equivalent = current data
+            # 5-min chart equivalent = 5x longer SMA
+            # 15-min chart equivalent = 15x longer SMA
+            
+            direction = pattern_details.get('direction', 'up')
+            
+            # Check alignment across different "timeframes" (SMA periods)
+            timeframe_checks = []
+            
+            # Short timeframe (5-period)
+            if 'sma_5' in data.columns:
+                tf1_bullish = data['close'].iloc[-1] > data['sma_5'].iloc[-1]
+                timeframe_checks.append(tf1_bullish if direction == 'up' else not tf1_bullish)
+            
+            # Medium timeframe (20-period as proxy for 5-min)
+            if 'sma_20' in data.columns:
+                tf2_bullish = data['close'].iloc[-1] > data['sma_20'].iloc[-1]
+                timeframe_checks.append(tf2_bullish if direction == 'up' else not tf2_bullish)
+            
+            # Longer timeframe (50-period as proxy for 15-min)
+            if 'sma_50' in data.columns and len(data) >= 50:
+                tf3_bullish = data['close'].iloc[-1] > data['sma_50'].iloc[-1]
+                timeframe_checks.append(tf3_bullish if direction == 'up' else not tf3_bullish)
+            
+            # Need at least 2 timeframes aligned
+            if len(timeframe_checks) >= 2:
+                aligned_count = sum(timeframe_checks)
+                total_count = len(timeframe_checks)
+                
+                # Require at least 2/3 alignment
+                if aligned_count < (total_count * 0.66):
+                    print(f"❌ Check 21: Multi-timeframe misalignment ({aligned_count}/{total_count} aligned)")
+                    return False
+                
+                print(f"✅ Check 21: Multi-timeframe aligned ({aligned_count}/{total_count})")
+                return True
+            
+            # If not enough data for multi-TF analysis, pass
+            print("✅ Check 21: Multi-timeframe check passed (insufficient data)")
+            return True
+            
+        except Exception as e:
+            print(f"Check 21 error: {e}")
+            return True
     
     def check_22_sentiment_confluence(self, data: pd.DataFrame, pattern_details: dict) -> bool:
-        """Check 22: Sentiment Confluence"""
-        # Placeholder: Would need news sentiment data
-        # TODO: Integrate NewsAPI when implemented
-        return True
+        """
+        Check 22: Sentiment Confluence
+        Uses price action extremes and RSI as proxy for sentiment
+        """
+        try:
+            # Without actual sentiment data, use technical indicators as proxy
+            # Extreme RSI readings can indicate overbought/oversold sentiment
+            
+            direction = pattern_details.get('direction', 'up')
+            
+            # Check RSI if available
+            if 'rsi' in data.columns:
+                rsi = data['rsi'].iloc[-1]
+                
+                if direction == 'up':
+                    # For bullish patterns, don't buy into extreme overbought
+                    if rsi > 80:
+                        print(f"❌ Check 22: Extreme overbought sentiment (RSI: {rsi:.1f})")
+                        return False
+                    # Avoid buying when extremely oversold (might be fundamental issue)
+                    if rsi < 20:
+                        print(f"❌ Check 22: Extreme oversold (RSI: {rsi:.1f}) - possible fundamental issue")
+                        return False
+                else:
+                    # For bearish patterns, don't short into extreme oversold
+                    if rsi < 20:
+                        print(f"❌ Check 22: Extreme oversold sentiment (RSI: {rsi:.1f})")
+                        return False
+                    # Avoid shorting when extremely overbought (might have momentum)
+                    if rsi > 80:
+                        print(f"❌ Check 22: Extreme overbought (RSI: {rsi:.1f}) - strong momentum")
+                        return False
+            
+            # Check for price at 52-week extremes (proxy for sentiment)
+            if len(data) >= 252:  # About 1 year of data
+                high_52w = data['high'].tail(252).max()
+                low_52w = data['low'].tail(252).min()
+                current_price = data['close'].iloc[-1]
+                
+                # Calculate distance from extremes
+                dist_from_high = ((high_52w - current_price) / high_52w) * 100
+                dist_from_low = ((current_price - low_52w) / low_52w) * 100
+                
+                # Don't buy right at 52-week highs (possible euphoria)
+                if direction == 'up' and dist_from_high < 1.0:
+                    print(f"❌ Check 22: At 52-week high - possible euphoric sentiment")
+                    return False
+                
+                # Don't short right at 52-week lows (possible capitulation)
+                if direction == 'down' and dist_from_low < 1.0:
+                    print(f"❌ Check 22: At 52-week low - possible panic sentiment")
+                    return False
+            
+            print("✅ Check 22: Sentiment indicators within acceptable range")
+            return True
+            
+        except Exception as e:
+            print(f"Check 22 error: {e}")
+            return True
 
 # Example of how to use this class
 if __name__ == '__main__':

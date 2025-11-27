@@ -35,8 +35,8 @@ class AdvancedScreeningConfig:
         self.enable_sr_confluence = True         # Level 19
         self.enable_gap_analysis = True          # Level 20
         self.enable_nrb_trigger = True           # Level 21
-        self.enable_tick_indicator = False       # Level 22 - Requires external data (disabled for now)
-        self.enable_ml_filter = False            # Level 23 - Requires trained model (disabled for now)
+        self.enable_tick_indicator = True        # Level 22 - NOW ENABLED (real TICK calculation)
+        self.enable_ml_filter = True             # Level 23 - NOW ENABLED (heuristic scoring)
         self.enable_retest_logic = True          # Level 24
         
         # Risk parameters
@@ -741,12 +741,139 @@ class AdvancedScreeningManager:
         """
         Level 23: ML Prediction Filter
         
-        Placeholder for now - requires trained ML model.
-        Will implement after gathering historical trade data.
+        Uses heuristic scoring based on multiple technical factors
+        until actual ML model is trained.
+        
+        Scores multiple dimensions and requires minimum confidence.
         """
-        # TODO: Implement when ML model is trained
-        logger.debug("ML prediction check: Not implemented (placeholder)")
-        return True, "ML filter not available (passed)"
+        try:
+            # Score different aspects (0-100 each)
+            scores = {}
+            
+            # 1. Trend Score (0-100)
+            if 'sma_10' in df.columns and 'sma_50' in df.columns and len(df) >= 50:
+                sma_10 = df['sma_10'].iloc[-1]
+                sma_50 = df['sma_50'].iloc[-1]
+                price = df['close'].iloc[-1]
+                
+                if is_long:
+                    # For longs: price > 10 SMA > 50 SMA is ideal
+                    if price > sma_10 > sma_50:
+                        scores['trend'] = 100
+                    elif price > sma_10:
+                        scores['trend'] = 60
+                    else:
+                        scores['trend'] = 20
+                else:
+                    # For shorts: price < 10 SMA < 50 SMA is ideal
+                    if price < sma_10 < sma_50:
+                        scores['trend'] = 100
+                    elif price < sma_10:
+                        scores['trend'] = 60
+                    else:
+                        scores['trend'] = 20
+            else:
+                scores['trend'] = 50  # Neutral if no data
+            
+            # 2. Momentum Score (0-100)
+            if 'rsi' in df.columns:
+                rsi = df['rsi'].iloc[-1]
+                if is_long:
+                    # For longs: RSI 50-70 is ideal (strong but not overbought)
+                    if 50 <= rsi <= 70:
+                        scores['momentum'] = 100
+                    elif 40 <= rsi < 50 or 70 < rsi <= 75:
+                        scores['momentum'] = 70
+                    elif rsi > 80 or rsi < 30:
+                        scores['momentum'] = 20  # Extreme
+                    else:
+                        scores['momentum'] = 40
+                else:
+                    # For shorts: RSI 30-50 is ideal (weak but not oversold)
+                    if 30 <= rsi <= 50:
+                        scores['momentum'] = 100
+                    elif 25 <= rsi < 30 or 50 < rsi <= 60:
+                        scores['momentum'] = 70
+                    elif rsi < 20 or rsi > 70:
+                        scores['momentum'] = 20  # Extreme
+                    else:
+                        scores['momentum'] = 40
+            else:
+                scores['momentum'] = 50
+            
+            # 3. Volume Score (0-100)
+            if 'volume' in df.columns and len(df) >= 20:
+                current_vol = df['volume'].iloc[-1]
+                avg_vol = df['volume'].tail(20).mean()
+                vol_ratio = current_vol / avg_vol if avg_vol > 0 else 1.0
+                
+                # Higher volume is generally better
+                if vol_ratio > 2.0:
+                    scores['volume'] = 100
+                elif vol_ratio > 1.5:
+                    scores['volume'] = 80
+                elif vol_ratio > 1.0:
+                    scores['volume'] = 60
+                else:
+                    scores['volume'] = 30
+            else:
+                scores['volume'] = 50
+            
+            # 4. Volatility Score (0-100)
+            if 'atr' in df.columns:
+                atr = df['atr'].iloc[-1]
+                price = df['close'].iloc[-1]
+                atr_pct = (atr / price) * 100
+                
+                # Moderate volatility is best (1-3%)
+                if 1.0 <= atr_pct <= 3.0:
+                    scores['volatility'] = 100
+                elif 0.5 <= atr_pct < 1.0 or 3.0 < atr_pct <= 4.0:
+                    scores['volatility'] = 70
+                elif atr_pct > 6.0:
+                    scores['volatility'] = 20  # Too volatile
+                else:
+                    scores['volatility'] = 40
+            else:
+                scores['volatility'] = 50
+            
+            # 5. Risk/Reward Score (0-100)
+            entry = signal_data.get('entry_price', df['close'].iloc[-1])
+            stop = signal_data.get('stop_loss', entry * 0.97)
+            target = signal_data.get('target', entry * 1.05)
+            
+            risk = abs(entry - stop)
+            reward = abs(target - entry)
+            rr_ratio = reward / risk if risk > 0 else 0
+            
+            if rr_ratio >= 2.5:
+                scores['risk_reward'] = 100
+            elif rr_ratio >= 2.0:
+                scores['risk_reward'] = 80
+            elif rr_ratio >= 1.5:
+                scores['risk_reward'] = 60
+            else:
+                scores['risk_reward'] = 30
+            
+            # Calculate overall confidence score
+            overall_score = sum(scores.values()) / len(scores)
+            
+            # Minimum confidence threshold: 60/100
+            min_confidence = 60.0
+            
+            if overall_score < min_confidence:
+                return False, (f"ML heuristic score too low: {overall_score:.1f}/100 "
+                              f"(trend:{scores.get('trend',0):.0f}, "
+                              f"mom:{scores.get('momentum',0):.0f}, "
+                              f"vol:{scores.get('volume',0):.0f}, "
+                              f"rr:{scores.get('risk_reward',0):.0f})")
+            
+            logger.info(f"✅ ML heuristic score: {overall_score:.1f}/100 (passed)")
+            return True, f"ML heuristic confidence: {overall_score:.1f}/100"
+            
+        except Exception as e:
+            logger.error(f"Error in ML prediction check: {e}")
+            return True, f"ML check error (passed): {str(e)}"
     
     def _check_retest_opportunity(self, symbol: str, df: pd.DataFrame, 
                                   entry_price: float, is_long: bool) -> Tuple[bool, str]:

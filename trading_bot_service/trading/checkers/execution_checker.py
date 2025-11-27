@@ -10,18 +10,33 @@
 import pandas as pd
 # import pandas_ta as ta # TEMPORARILY DISABLED - not compatible with Python 3.11
 # TODO: Migrate to alternative library like ta-lib or implement indicators manually
-from typing import Dict, Any, Tuple
+from typing import Dict, Any, Tuple, Optional
+import logging
+import requests
+
+logger = logging.getLogger(__name__)
 
 class ExecutionChecker:
     """
     Performs Phase C of the Grandmaster Checklist: Final, Pre-Execution Confirmation.
     """
 
-    def __init__(self):
-        """Initializes the Execution Checker."""
+    def __init__(self, api_key: Optional[str] = None, jwt_token: Optional[str] = None):
+        """Initializes the Execution Checker.
+        
+        Args:
+            api_key: Angel One API key (optional, for margin checks)
+            jwt_token: User's JWT token (optional, for margin checks)
+        """
         # In a real system, the ML model would be loaded here.
         # self.ml_model = load_model('confidence_model.pkl')
-        pass
+        self.api_key = api_key
+        self.jwt_token = jwt_token
+        self.base_url = "https://apiconnect.angelone.in"
+        
+        # Cache for margin data (to avoid excessive API calls)
+        self._margin_cache = None
+        self._margin_cache_time = None
     
     # ========================================================================
     # Methods called by ExecutionManager (check_23 through check_30)
@@ -80,15 +95,57 @@ class ExecutionChecker:
     def check_27_account_margin(self, data: pd.DataFrame, pattern_details: Dict[str, Any]) -> bool:
         """
         Check 27: Account Margin Availability
-        TODO: Query Angel One API for real margin
-        For now, pass (assume margin available)
+        Query Angel One RMS API for real margin availability
         """
-        # TODO: Implement real margin check
-        # margin_available = angel_api.get_available_margin()
-        # required_margin = calculate_required_margin(pattern_details)
-        # return margin_available > required_margin * 1.2  # 20% buffer
+        # If API credentials not provided, pass (backward compatibility)
+        if not self.api_key or not self.jwt_token:
+            logger.debug("Check 27: API credentials not available, skipping margin check")
+            return True
         
-        return True  # Pass for now
+        try:
+            # Get available margin from Angel One RMS API
+            margin_data = self._get_rms_margin()
+            
+            if not margin_data:
+                logger.warning("Check 27: Failed to fetch margin data, passing by default")
+                return True
+            
+            # Extract available cash and margin
+            available_cash = float(margin_data.get('availablecash', 0))
+            available_margin = float(margin_data.get('availablelimitmargin', 0))
+            total_available = available_cash + available_margin
+            
+            # Calculate required margin for this trade
+            entry_price = pattern_details.get('breakout_price', data['close'].iloc[-1])
+            position_size = pattern_details.get('position_size', 100)  # Default 100 shares
+            
+            # For intraday, margin requirement is typically 20% of trade value
+            trade_value = entry_price * position_size
+            required_margin = trade_value * 0.20  # 20% margin for intraday
+            
+            # Add 20% buffer for safety
+            required_margin_with_buffer = required_margin * 1.2
+            
+            # Check if sufficient margin available
+            if total_available < required_margin_with_buffer:
+                logger.warning(
+                    f"❌ Check 27: Insufficient margin. "
+                    f"Required: ₹{required_margin_with_buffer:.2f}, "
+                    f"Available: ₹{total_available:.2f}"
+                )
+                return False
+            
+            logger.info(
+                f"✅ Check 27: Sufficient margin. "
+                f"Required: ₹{required_margin_with_buffer:.2f}, "
+                f"Available: ₹{total_available:.2f}"
+            )
+            return True
+            
+        except Exception as e:
+            logger.error(f"Check 27: Error checking margin: {e}", exc_info=True)
+            # On error, pass (fail-safe mode)
+            return True
     
     def check_28_system_health(self, data: pd.DataFrame, pattern_details: Dict[str, Any]) -> bool:
         """Check 28: Trading System Health"""
@@ -117,6 +174,69 @@ class ExecutionChecker:
         """Check 30: Final Cumulative Risk Assessment"""
         # Final sanity check - all looks good
         return True
+    
+    # ========================================================================
+    # Helper methods for API calls
+    # ========================================================================
+    
+    def _get_rms_margin(self) -> Optional[Dict]:
+        """
+        Fetch RMS (Risk Management System) margin data from Angel One API.
+        Uses caching to avoid excessive API calls (5-minute cache).
+        
+        Returns:
+            Dictionary with margin data or None if API call fails
+        """
+        from datetime import datetime, timedelta
+        
+        # Check cache (5-minute expiry)
+        if self._margin_cache and self._margin_cache_time:
+            cache_age = datetime.now() - self._margin_cache_time
+            if cache_age < timedelta(minutes=5):
+                logger.debug("Using cached margin data")
+                return self._margin_cache
+        
+        # Make API call to get RMS limit
+        try:
+            url = f"{self.base_url}/rest/secure/angelbroking/user/v1/getRMS"
+            
+            headers = {
+                'Authorization': f'Bearer {self.jwt_token}',
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'X-UserType': 'USER',
+                'X-SourceID': 'WEB',
+                'X-ClientLocalIP': '127.0.0.1',
+                'X-ClientPublicIP': '127.0.0.1',
+                'X-MACAddress': '00:00:00:00:00:00',
+                'X-PrivateKey': self.api_key
+            }
+            
+            response = requests.get(url, headers=headers, timeout=10)
+            
+            if response.status_code == 200:
+                result = response.json()
+                
+                if result.get('status') and result.get('data'):
+                    # Cache the result
+                    self._margin_cache = result['data']
+                    self._margin_cache_time = datetime.now()
+                    
+                    logger.debug(f"RMS margin data fetched successfully: {self._margin_cache}")
+                    return self._margin_cache
+                else:
+                    logger.error(f"RMS API returned error: {result.get('message')}")
+                    return None
+            else:
+                logger.error(f"RMS API call failed with status {response.status_code}: {response.text}")
+                return None
+                
+        except requests.exceptions.Timeout:
+            logger.error("RMS API call timed out")
+            return None
+        except Exception as e:
+            logger.error(f"Error calling RMS API: {e}", exc_info=True)
+            return None
     
     # ========================================================================
     # Original run_all_checks methods (for backward compatibility)

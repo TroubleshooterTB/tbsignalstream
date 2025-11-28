@@ -280,6 +280,58 @@ def bot_status():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/test-analysis', methods=['POST'])
+def test_analysis():
+    """
+    TEST ENDPOINT: Manually trigger analysis for debugging
+    Use this to verify bot analysis works even when market is closed
+    """
+    try:
+        # Verify Firebase ID token
+        auth_header = request.headers.get('Authorization', '')
+        if not auth_header.startswith('Bearer '):
+            return jsonify({'error': 'Missing or invalid authorization header'}), 401
+        
+        id_token = auth_header.split('Bearer ')[1]
+        
+        try:
+            decoded_token = auth.verify_id_token(id_token)
+            user_id = decoded_token['uid']
+        except Exception as e:
+            return jsonify({'error': 'Invalid authentication token'}), 401
+        
+        # Check if bot is running
+        if user_id not in active_bots or not active_bots[user_id].is_running:
+            return jsonify({
+                'error': 'Bot is not running. Please start the bot first.',
+                'hint': 'Click "Start Trading Bot" in the dashboard'
+            }), 400
+        
+        bot = active_bots[user_id]
+        
+        return jsonify({
+            'status': 'success',
+            'message': 'Bot is running! Check Cloud Run logs for analysis output.',
+            'instructions': [
+                '1. Wait 5-10 seconds',
+                '2. Run: gcloud logging read ... (see USER_GUIDE.md)',
+                '3. Look for: "📊 [DEBUG] Scanning X symbols..."',
+                '4. If you see scanning logs, bot is working correctly!',
+                '5. No signals during closed market is NORMAL'
+            ],
+            'bot_info': {
+                'symbols': bot.symbols,
+                'mode': bot.mode,
+                'strategy': bot.strategy,
+                'running': bot.is_running
+            }
+        }), 200
+    
+    except Exception as e:
+        logger.error(f"Error in test-analysis: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
     app.run(host='0.0.0.0', port=port, threaded=True)

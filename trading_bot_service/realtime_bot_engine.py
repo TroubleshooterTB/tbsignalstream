@@ -105,16 +105,18 @@ class RealtimeBotEngine:
                     raise Exception("Failed to fetch any symbol tokens, cannot continue")
             
             # Step 2: Initialize trading managers
+            logger.info("🔧 [DEBUG] Initializing trading managers...")
             self._initialize_managers()
+            logger.info("✅ [DEBUG] Trading managers initialized successfully")
             
             # Step 3: Initialize WebSocket connection - WITH ERROR HANDLING
-            logger.info("Initializing WebSocket connection...")
+            logger.info("🔌 [DEBUG] Initializing WebSocket connection...")
             try:
                 self._initialize_websocket()
-                logger.info("✅ WebSocket initialized")
+                logger.info("✅ [DEBUG] WebSocket initialized and connected")
             except Exception as e:
-                logger.error(f"WebSocket initialization failed: {e}")
-                logger.warning("Bot will continue with polling mode (no real-time ticks)")
+                logger.error(f"❌ [DEBUG] WebSocket initialization failed: {e}", exc_info=True)
+                logger.warning("⚠️  [DEBUG] Bot will continue with polling mode (no real-time ticks)")
                 self.ws_manager = None  # Bot will run without WebSocket
             
             # Step 4: Subscribe to symbols (only if WebSocket is active)
@@ -589,18 +591,25 @@ class RealtimeBotEngine:
         Position monitoring happens independently every 0.5 seconds.
         """
         try:
+            logger.debug(f"🔍 [DEBUG] _analyze_and_trade() called - Strategy: {self.strategy}")
+            
             # Check EOD auto-close (3:15 PM for safety before broker's 3:20 PM)
             self._check_eod_auto_close()
             
             if self.strategy == 'pattern':
+                logger.debug("📊 [DEBUG] Executing PATTERN strategy...")
                 self._execute_pattern_strategy()
             elif self.strategy == 'ironclad':
+                logger.debug("🛡️  [DEBUG] Executing IRONCLAD strategy...")
                 self._execute_ironclad_strategy()
             elif self.strategy == 'both':
+                logger.debug("🔀 [DEBUG] Executing DUAL strategy...")
                 self._execute_dual_strategy()
+            
+            logger.debug("✅ [DEBUG] _analyze_and_trade() completed successfully")
                 
         except Exception as e:
-            logger.error(f"Error in strategy execution: {e}", exc_info=True)
+            logger.error(f"❌ [DEBUG] Error in strategy execution: {e}", exc_info=True)
     
     def _check_eod_auto_close(self):
         """
@@ -704,12 +713,15 @@ class RealtimeBotEngine:
         # STEP 1: Scan all symbols and collect signals with confidence scores
         signals = []
         
-        logger.info(f"📊 Scanning {len(self.symbols)} symbols for trading opportunities...")
+        logger.info(f"📊 [DEBUG] Scanning {len(self.symbols)} symbols for trading opportunities...")
+        logger.debug(f"🔢 [DEBUG] Candle data available for {len(candle_data_copy)} symbols")
+        logger.debug(f"💰 [DEBUG] Latest prices available for {len(latest_prices_copy)} symbols")
         
         for symbol in self.symbols:
             try:
                 # Check if we have enough candle data
                 if symbol not in candle_data_copy or len(candle_data_copy[symbol]) < 50:
+                    logger.debug(f"⏭️  [DEBUG] {symbol}: Skipping - insufficient candle data ({len(candle_data_copy.get(symbol, []))} candles)")
                     continue
                 
                 # Skip if already have position
@@ -1158,6 +1170,7 @@ class RealtimeBotEngine:
             logger.info(f"  ML Signal ID: {ml_signal_id}")
         
         # 🔥 WRITE SIGNAL TO FIRESTORE FOR FRONTEND DISPLAY
+        logger.info(f"💾 [DEBUG] Attempting to write {symbol} signal to Firestore...")
         try:
             import firebase_admin
             from firebase_admin import firestore
@@ -1182,10 +1195,12 @@ class RealtimeBotEngine:
             if ml_signal_id:
                 signal_data['ml_signal_id'] = ml_signal_id
             
-            db.collection('trading_signals').add(signal_data)
-            logger.info(f"✅ Signal written to Firestore for {symbol}")
+            logger.debug(f"📝 [DEBUG] Signal data: {signal_data}")
+            doc_ref = db.collection('trading_signals').add(signal_data)
+            logger.info(f"✅ [DEBUG] Signal written to Firestore! Doc ID: {doc_ref[1].id}")
+            logger.info(f"🎯 SIGNAL GENERATED: {symbol} @ ₹{entry_price:.2f} - Check dashboard NOW!")
         except Exception as e:
-            logger.error(f"Failed to write signal to Firestore: {e}")
+            logger.error(f"❌ [DEBUG] Failed to write signal to Firestore: {e}", exc_info=True)
         
         if self.trading_mode == 'live':
             # Place real order

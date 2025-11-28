@@ -79,25 +79,46 @@
 
 ---
 
-### **Step 4: Start Your Trading Bot**
+### **Step 4: Start Your Trading Bot** ⚠️ **CRITICAL - Bot Won't Run Without This**
 
+🔴 **IMPORTANT**: The bot does NOT auto-start after deployment. You MUST manually click "Start Trading Bot" button every time you want to trade.
+
+**Pre-Start Checklist**:
 1. **Review Configuration**
    - Symbols: ✅ Selected
    - Angel One: ✅ Connected
    - Strategy: ✅ Chosen
    - Mode: ✅ Paper or Live
 
-2. **Click "Start Trading Bot"**
+2. **Click "Start Trading Bot" Button**
+   - Located in "Trading Bot Controls" card
+   - Button changes from "Start" to "Stop" when running
    - System initializes WebSocket connection
    - Connects to real-time market data
    - Bot status changes to: **"Running 🟢"**
 
-3. **What Happens Next**
+3. **Verify Bot is Actually Running**
+   - ✅ Status indicator shows: **"Running 🟢"** (not "Stopped 🔴")
+   - ✅ You'll see toast notification: "Trading Bot Started"
+   - ✅ WebSocket status: "Connected"
+   
+**⚠️ Common Mistake**: Assuming bot runs automatically after deployment
+- **Wrong**: "I deployed the bot, so it should be running"
+- **Correct**: "I deployed the bot, NOW I need to click Start to run it"
+
+4. **What Happens After You Click Start**
    - Bot monitors selected stocks every 0.5 seconds
    - Detects patterns and analyzes with 30-point checklist
    - Runs 24-level advanced screening
    - Generates signals when ALL criteria met
-   - Auto-executes trades (in live mode)
+   - Writes signals to Firestore (you'll see them in dashboard)
+   - Auto-executes trades (in live mode only)
+
+5. **How to Know Bot is Working**
+   - Check Cloud Run logs (see Debugging section)
+   - You should see: "📊 Scanning 50 symbols for trading opportunities..."
+   - This appears every 5 seconds when bot is running
+   - If logs are empty → Bot was NOT started correctly
 
 ---
 
@@ -388,21 +409,192 @@ Your bot has multiple safety layers:
 
 ---
 
+## 🐛 **Troubleshooting & Debugging**
+
+### **Problem: "Bot Not Generating Signals"**
+
+**Most Common Cause**: Bot was never started
+
+**Check**:
+1. ✅ Bot status shows **"Running 🟢"** (not "Stopped 🔴")
+2. ✅ Market is OPEN (9:15 AM - 3:30 PM weekdays)
+3. ✅ Angel One connection is active (green checkmark)
+4. ✅ You clicked "Start Trading Bot" button today
+
+**Verify Bot is Actually Running**:
+```bash
+# Open terminal/PowerShell and run:
+gcloud logging read \
+  "resource.type=cloud_run_revision AND resource.labels.service_name=trading-bot-service" \
+  --limit=20 --format="value(timestamp,textPayload)" --freshness=10m
+```
+
+**Expected Output** (if bot is running):
+```
+📊 Scanning 50 symbols for trading opportunities...
+Pattern detected: RELIANCE Breakout | Confidence: 87.5%
+No trading signals found in this scan cycle
+```
+
+**If logs are EMPTY** → Bot is NOT running → Click "Start Trading Bot"
+
+---
+
+### **Problem: "Dashboard Shows Old Stale Signals"**
+
+**Cause**: Old test data in Firestore or browser cache
+
+**Solution**:
+1. **Clear Browser Cache**:
+   - Press `F12` (DevTools)
+   - Right-click Refresh button
+   - Select "Empty Cache and Hard Reload"
+
+2. **Clear Firestore Data** (if needed):
+   - Go to Firebase Console → Firestore
+   - Navigate to `trading_signals` collection
+   - Delete old documents manually
+
+3. **Hard Refresh Dashboard**:
+   - Press `Ctrl + Shift + R` (Windows)
+   - Press `Cmd + Shift + R` (Mac)
+
+---
+
+### **Problem: "Angel One Connection Failed"**
+
+**Common Causes**:
+- JWT token expired (24-hour validity)
+- Incorrect credentials
+- Angel One server downtime
+
+**Solution**:
+1. Go to Settings → Broker Connection
+2. Re-enter credentials (Client Code, PIN, TOTP)
+3. Click "Reconnect"
+4. Verify green checkmark appears
+
+**Daily Routine**: Re-authenticate every morning before market opens.
+
+---
+
+### **Problem: "Bot Shows Running But No Analysis in Logs"**
+
+**Possible Causes**:
+1. **WebSocket connection failed** - Check Angel One API status
+2. **Symbol tokens not fetched** - Check internet connection
+3. **Market is closed** - Bot pauses analysis outside 9:15 AM - 3:30 PM
+
+**Debugging Steps**:
+```bash
+# Check Cloud Run logs for errors:
+gcloud logging read \
+  "resource.type=cloud_run_revision AND severity>=ERROR" \
+  --limit=10 --freshness=1h
+```
+
+---
+
+### **Problem: "Signals Generated But No Trades Placed"**
+
+**Expected Behavior in Paper Mode**:
+- ✅ Signals appear in dashboard
+- ❌ No actual orders placed to Angel One
+- This is CORRECT - paper trading simulates only
+
+**In Live Mode**:
+- Check "Order Book" in dashboard
+- Look for error messages
+- Verify sufficient margin in broker account
+- Check Angel One RMS limits
+
+---
+
+### **Understanding "No Signals" is Normal**
+
+**The bot is VERY strict** - combines 30-point validation + 24-level screening.
+
+**During sideways markets**:
+- Bot may run for 1-2 hours without signals
+- This is EXPECTED and CORRECT behavior
+- Bot waits for high-quality setups only
+
+**Best times for signals**:
+- 9:15 AM - 10:00 AM (market open volatility)
+- 2:30 PM - 3:15 PM (pre-close moves)
+- Trending market days
+
+**If no signals for 3+ hours in volatile market** → Check logs for validation failures.
+
+---
+
+### **How to Check Cloud Run Logs**
+
+**Prerequisites**:
+- Google Cloud SDK installed
+- Authenticated: `gcloud auth login`
+
+**View Recent Logs**:
+```bash
+gcloud logging read \
+  "resource.type=cloud_run_revision AND resource.labels.service_name=trading-bot-service" \
+  --limit=50 --format="value(timestamp,textPayload)" --freshness=30m
+```
+
+**Search for Specific Errors**:
+```bash
+gcloud logging read \
+  "resource.type=cloud_run_revision AND severity>=ERROR" \
+  --limit=20
+```
+
+**Real-time Log Streaming** (while bot runs):
+```bash
+gcloud logging tail \
+  "resource.type=cloud_run_revision AND resource.labels.service_name=trading-bot-service"
+```
+
+---
+
+### **Browser Console Debugging**
+
+**Open DevTools** (`F12`):
+
+**Check for Frontend Errors**:
+1. Go to **Console** tab
+2. Look for errors (red text):
+   - `Firestore permission denied` → Security rules issue
+   - `Firebase not initialized` → Reload page
+   - `Network error` → Check internet connection
+
+**Verify Firestore Listener**:
+```javascript
+// In Console, type:
+console.log("Firestore listener active:", window.firestoreConnected)
+```
+
+Expected: `true` if listener is working
+
+---
+
 ## 📞 **Support & Resources**
 
 ### **Getting Help**:
-1. Check this User Guide first
-2. Review dashboard tooltips (hover over ⓘ icons)
-3. Check order book for error messages
-4. Review Angel One trading app
+1. ✅ Check this User Guide first
+2. ✅ Review **BOT_NOT_RUNNING_DIAGNOSIS.md** for common issues
+3. ✅ Check dashboard tooltips (hover over ⓘ icons)
+4. ✅ Review Cloud Run logs for errors
+5. ✅ Check browser console (F12) for frontend errors
 
 ### **Technical Support**:
 - Email: support@tbsignalstream.com
 - Expected response: 24-48 hours
+- Include: Screenshots, logs, exact time of issue
 
 ### **Learning Resources**:
 - **Strategy Documentation**: See COMPLETE_STUB_IMPLEMENTATION.md
 - **API Documentation**: See CHECK_27_MARGIN_IMPLEMENTATION.md
+- **Debugging Guide**: See BOT_NOT_RUNNING_DIAGNOSIS.md
 - **Angel One Help**: https://smartapi.angelbroking.com/docs
 
 ---

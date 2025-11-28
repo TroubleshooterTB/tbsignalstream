@@ -3,7 +3,11 @@
 import os
 import logging
 from SmartApi import SmartConnect
-from src.config import ANGEL_ONE_API
+# Configuration moved inline (no src module in trading_bot_service)
+ANGEL_ONE_API = {
+    'API_KEY_HISTORICAL': 'YOUR_HISTORICAL_API_KEY_HERE',
+    'API_KEY_TRADING': 'YOUR_TRADING_API_KEY_HERE',
+}
 
 class DataHandler:
     """

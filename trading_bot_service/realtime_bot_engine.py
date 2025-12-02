@@ -155,6 +155,19 @@ class RealtimeBotEngine:
             
             while running_flag() and self.is_running:
                 try:
+                    # 🚨 EMERGENCY STOP: Check Firestore flag for instant shutdown
+                    try:
+                        import firebase_admin
+                        from firebase_admin import firestore
+                        db = firestore.client()
+                        bot_config = db.collection('bot_configs').document(self.user_id).get()
+                        if bot_config.exists and bot_config.to_dict().get('emergency_stop', False):
+                            logger.critical("🚨 EMERGENCY STOP ACTIVATED - Shutting down bot immediately")
+                            self.is_running = False
+                            break
+                    except Exception as stop_check_err:
+                        logger.debug(f"Emergency stop check error (non-critical): {stop_check_err}")
+                    
                     cycle_start = time.time()
                     
                     # Execute strategy analysis (every 5 seconds)
@@ -929,7 +942,8 @@ class RealtimeBotEngine:
                         target=sig['target'],
                         quantity=quantity,
                         reason=f"Pattern: {sig['pattern_details'].get('pattern_name')} | Confidence: {sig['confidence']:.1f}%",
-                        ml_signal_id=ml_signal_id  # Pass ML signal ID for outcome tracking
+                        ml_signal_id=ml_signal_id,  # Pass ML signal ID for outcome tracking
+                        confidence=sig['confidence']  # Pass actual calculated confidence
                     )
                     
                 except Exception as e:
@@ -1184,7 +1198,8 @@ class RealtimeBotEngine:
                         target=target,
                         quantity=quantity,
                         reason=f"Ironclad {signal.get('action')} | Score: {sig['score']:.1f}",
-                        ml_signal_id=ml_signal_id  # Pass ML signal ID
+                        ml_signal_id=ml_signal_id,  # Pass ML signal ID
+                        confidence=sig['score']  # Pass actual Ironclad score
                     )
                     
                 except Exception as e:
@@ -1199,7 +1214,7 @@ class RealtimeBotEngine:
     
     def _place_entry_order(self, symbol: str, direction: str, entry_price: float,
                           stop_loss: float, target: float, quantity: int, reason: str,
-                          ml_signal_id: Optional[str] = None):
+                          ml_signal_id: Optional[str] = None, confidence: float = 95.0):
         """Place entry order with proper logging"""
         from trading.order_manager import OrderType, TransactionType, ProductType
         
@@ -1216,6 +1231,7 @@ class RealtimeBotEngine:
         logger.info(f"  Stop: ₹{stop_loss:.2f}")
         logger.info(f"  Target: ₹{target:.2f}")
         logger.info(f"  Qty: {quantity}")
+        logger.info(f"  Confidence: {confidence:.1f}%")
         if ml_signal_id:
             logger.info(f"  ML Signal ID: {ml_signal_id}")
         
@@ -1236,7 +1252,7 @@ class RealtimeBotEngine:
                 'stop_loss': stop_loss,
                 'target': target,
                 'quantity': quantity,
-                'confidence': 0.95,  # Use actual confidence from validation
+                'confidence': confidence / 100.0,  # ✅ FIXED: Use actual calculated confidence (0-1 scale)
                 'rationale': reason,
                 'timestamp': firestore.SERVER_TIMESTAMP,
                 'mode': self.trading_mode,
@@ -1253,18 +1269,23 @@ class RealtimeBotEngine:
             logger.error(f"❌ [DEBUG] Failed to write signal to Firestore: {e}", exc_info=True)
         
         if self.trading_mode == 'live':
-            # Place real order
+            # Place real order with enhanced error handling
             transaction_type = TransactionType.BUY if direction == 'up' else TransactionType.SELL
             
-            order_result = self._order_manager.place_order(
-                symbol=symbol,
-                token=token_info['token'],
-                exchange=token_info['exchange'],
-                transaction_type=transaction_type,
-                order_type=OrderType.MARKET,
-                quantity=quantity,
-                product_type=ProductType.INTRADAY
-            )
+            try:
+                order_result = self._order_manager.place_order(
+                    symbol=symbol,
+                    token=token_info['token'],
+                    exchange=token_info['exchange'],
+                    transaction_type=transaction_type,
+                    order_type=OrderType.MARKET,
+                    quantity=quantity,
+                    product_type=ProductType.INTRADAY
+                )
+            except Exception as order_err:
+                logger.error(f"❌ CRITICAL: Order placement exception for {symbol}: {order_err}", exc_info=True)
+                # Don't create position if order failed
+                return
             
             if order_result:
                 order_id = order_result.get('orderid', 'unknown')

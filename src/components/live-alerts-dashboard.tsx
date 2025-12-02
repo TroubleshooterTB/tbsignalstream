@@ -54,35 +54,8 @@ type OpenPosition = {
   status: "open";
 };
 
-// Generate initial signals from ALL 50 Nifty stocks with realistic technical analysis
-const generateInitialSignals = (): Omit<Alert, 'id' | 'timestamp' | 'type' | 'pnl'>[] => {
-  const signalTypes: Array<"Breakout" | "Momentum" | "Reversal"> = ["Breakout", "Momentum", "Reversal"];
-  const rationales = [
-    "Volume spike with bullish candle pattern",
-    "Strong relative strength vs NIFTY",
-    "RSI divergence with MACD crossover",
-    "Breaking above 20-day SMA resistance",
-    "Stochastic oversold bounce with volume",
-    "Bollinger Band squeeze breakout",
-    "Golden cross on hourly timeframe",
-    "Support zone holding with increasing volume",
-    "Price action reversal at key Fibonacci level",
-    "Momentum acceleration with ADX > 25",
-  ];
-
-  // Convert Nifty 50 symbols to ticker format (remove -EQ suffix)
-  const tickers = NIFTY_50_SYMBOLS.map(s => s.replace('-EQ', ''));
-  
-  return tickers.map((ticker, index) => ({
-    ticker,
-    price: 0, // Will be replaced with real price
-    confidence: 0.85 + (Math.random() * 0.13), // 85-98% confidence
-    signal_type: signalTypes[index % 3],
-    rationale: rationales[index % rationales.length],
-  }));
-};
-
-const initialBuySignals = generateInitialSignals();
+// ⚠️ REMOVED: generateInitialSignals() - was causing ghost signals to appear
+// All signals now ONLY come from Firestore (bot-generated) - no demo data
 
 let alertCounter = 0;
 let tradeLogForPerformance: any[] = [];
@@ -105,6 +78,14 @@ export function LiveAlertsDashboard() {
         action: alert.type === "BUY" ? <ArrowUp className="h-5 w-5 text-green-500" /> : <ArrowDown className="h-5 w-5 text-red-500" />,
       });
   }, [toast]);
+
+  // 🧹 CLEANUP: Ensure fresh state on mount - no ghost signals
+  useEffect(() => {
+    console.log('[Dashboard] Component mounted - clearing any stale state');
+    setAlerts([]);
+    setOpenPositions(new Map());
+    setIsMounted(true);
+  }, []);
 
   // Fetch live prices from Angel One
   useEffect(() => {

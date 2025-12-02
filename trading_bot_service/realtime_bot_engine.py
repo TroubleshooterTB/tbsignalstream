@@ -714,14 +714,14 @@ class RealtimeBotEngine:
         signals = []
         
         logger.info(f"📊 [DEBUG] Scanning {len(self.symbols)} symbols for trading opportunities...")
-        logger.debug(f"🔢 [DEBUG] Candle data available for {len(candle_data_copy)} symbols")
-        logger.debug(f"💰 [DEBUG] Latest prices available for {len(latest_prices_copy)} symbols")
+        logger.info(f"🔢 [DEBUG] Candle data available for {len(candle_data_copy)} symbols")
+        logger.info(f"💰 [DEBUG] Latest prices available for {len(latest_prices_copy)} symbols")
         
         for symbol in self.symbols:
             try:
                 # Check if we have enough candle data
                 if symbol not in candle_data_copy or len(candle_data_copy[symbol]) < 50:
-                    logger.debug(f"⏭️  [DEBUG] {symbol}: Skipping - insufficient candle data ({len(candle_data_copy.get(symbol, []))} candles)")
+                    logger.info(f"⏭️  [DEBUG] {symbol}: Skipping - insufficient candle data ({len(candle_data_copy.get(symbol, []))} candles)")
                     continue
                 
                 # Skip if already have position

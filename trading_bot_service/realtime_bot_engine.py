@@ -887,11 +887,11 @@ class RealtimeBotEngine:
                                 self._ml_logger.log_rejected_signal(rejected_signal_data, screen_reason)
                             except Exception as log_err:
                                 logger.debug(f"ML logger (rejected signal) error: {log_err}")
-                        
+
                         continue  # Skip this trade
-                    
+
                     logger.info(f"✅ [{sig['symbol']}] Advanced Screening PASSED: {screen_reason}")
-                    
+
                     # Log signal for ML training (before order placement)
                     ml_signal_id = None
                     if self._ml_logger and self._ml_logger.enabled:

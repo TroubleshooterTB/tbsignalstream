@@ -468,53 +468,89 @@ class RealtimeBotEngine:
         return df
     
     def _get_symbol_tokens_parallel(self) -> Dict:
-        """Fetch symbol tokens in parallel for fast initialization"""
+        """Fetch symbol tokens in parallel with retry logic and exponential backoff"""
         import concurrent.futures
         import requests
+        import time
         
-        def fetch_token(symbol):
-            try:
-                url = f"{self.base_url}/rest/secure/angelbroking/order/v1/searchScrip"
-                headers = {
-                    'Authorization': f'Bearer {self.jwt_token}',
-                    'Content-Type': 'application/json',
-                    'X-PrivateKey': self.api_key
-                }
-                payload = {"exchange": "NSE", "searchscrip": symbol}
-                
-                response = requests.post(url, json=payload, headers=headers, timeout=10)
-                
-                if response.status_code == 200:
-                    data = response.json()
-                    if data.get('status') and data.get('data'):
-                        scrip = data['data'][0]
-                        return symbol, {
-                            'token': scrip.get('symboltoken'),
-                            'exchange': scrip.get('exch_seg', 'NSE'),
-                            'trading_symbol': scrip.get('tradingsymbol', symbol)
-                        }
-                return symbol, None
-                
-            except Exception as e:
-                logger.error(f"Error fetching token for {symbol}: {e}")
-                return symbol, None
+        def fetch_token(symbol, max_retries=3):
+            """Fetch token with retry logic"""
+            for attempt in range(max_retries):
+                try:
+                    # Add exponential backoff delay
+                    if attempt > 0:
+                        delay = min(2 ** attempt, 10)  # Max 10 seconds
+                        logger.info(f"Retry {attempt + 1}/{max_retries} for {symbol} after {delay}s delay")
+                        time.sleep(delay)
+                    
+                    url = f"{self.base_url}/rest/secure/angelbroking/order/v1/searchScrip"
+                    headers = {
+                        'Authorization': f'Bearer {self.jwt_token}',
+                        'Content-Type': 'application/json',
+                        'X-PrivateKey': self.api_key
+                    }
+                    payload = {"exchange": "NSE", "searchscrip": symbol}
+                    
+                    response = requests.post(url, json=payload, headers=headers, timeout=15)
+                    
+                    if response.status_code == 200:
+                        data = response.json()
+                        if data.get('status') and data.get('data'):
+                            scrip = data['data'][0]
+                            logger.info(f"✅ Successfully fetched token for {symbol}")
+                            return symbol, {
+                                'token': scrip.get('symboltoken'),
+                                'exchange': scrip.get('exch_seg', 'NSE'),
+                                'trading_symbol': scrip.get('tradingsymbol', symbol)
+                            }
+                    elif response.status_code == 429:  # Rate limit
+                        logger.warning(f"⚠️  Rate limited for {symbol}, will retry...")
+                        continue  # Retry with backoff
+                    else:
+                        logger.error(f"API error for {symbol}: {response.status_code}")
+                        
+                except requests.exceptions.SSLError as e:
+                    logger.error(f"SSL error for {symbol} (attempt {attempt + 1}): {e}")
+                    continue  # Retry
+                except requests.exceptions.ConnectionError as e:
+                    logger.error(f"Connection error for {symbol} (attempt {attempt + 1}): {e}")
+                    continue  # Retry
+                except Exception as e:
+                    logger.error(f"Error fetching token for {symbol} (attempt {attempt + 1}): {e}")
+                    if attempt < max_retries - 1:
+                        continue  # Retry
+                    
+            logger.warning(f"❌ Failed to fetch token for {symbol} after {max_retries} attempts")
+            return symbol, None
         
-        # Fetch all tokens in parallel
+        # Fetch tokens in smaller batches to avoid overwhelming the API
         tokens = {}
-        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-            results = executor.map(fetch_token, self.symbols)
-            
-            for symbol, token_info in results:
-                if token_info:
-                    tokens[symbol] = token_info
+        batch_size = 10
+        symbol_batches = [self.symbols[i:i + batch_size] for i in range(0, len(self.symbols), batch_size)]
         
+        for batch_idx, batch in enumerate(symbol_batches, 1):
+            logger.info(f"Fetching batch {batch_idx}/{len(symbol_batches)} ({len(batch)} symbols)...")
+            
+            with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:  # Reduced from 5
+                results = executor.map(fetch_token, batch)
+                
+                for symbol, token_info in results:
+                    if token_info:
+                        tokens[symbol] = token_info
+            
+            # Add delay between batches to avoid rate limiting
+            if batch_idx < len(symbol_batches):
+                time.sleep(1)
+        
+        logger.info(f"Successfully fetched {len(tokens)}/{len(self.symbols)} symbol tokens")
         return tokens
     
     def _get_fallback_tokens(self) -> Dict:
         """
-        Fallback symbol tokens for critical Nifty 50 stocks.
-        Used when API token fetching fails.
+        Fallback symbol tokens for Nifty 50 stocks.
+        Used when API token fetching fails due to rate limiting or network issues.
         """
+        # Comprehensive Nifty 50 token list (updated Dec 2025)
         fallback_tokens = {
             'RELIANCE': {'token': '2885', 'exchange': 'NSE', 'trading_symbol': 'RELIANCE-EQ'},
             'HDFCBANK': {'token': '1333', 'exchange': 'NSE', 'trading_symbol': 'HDFCBANK-EQ'},
@@ -526,6 +562,45 @@ class RealtimeBotEngine:
             'ITC': {'token': '1660', 'exchange': 'NSE', 'trading_symbol': 'ITC-EQ'},
             'AXISBANK': {'token': '5900', 'exchange': 'NSE', 'trading_symbol': 'AXISBANK-EQ'},
             'KOTAKBANK': {'token': '1922', 'exchange': 'NSE', 'trading_symbol': 'KOTAKBANK-EQ'},
+            'HINDUNILVR': {'token': '1394', 'exchange': 'NSE', 'trading_symbol': 'HINDUNILVR-EQ'},
+            'LT': {'token': '11483', 'exchange': 'NSE', 'trading_symbol': 'LT-EQ'},
+            'ASIANPAINT': {'token': '236', 'exchange': 'NSE', 'trading_symbol': 'ASIANPAINT-EQ'},
+            'MARUTI': {'token': '10999', 'exchange': 'NSE', 'trading_symbol': 'MARUTI-EQ'},
+            'HCLTECH': {'token': '7229', 'exchange': 'NSE', 'trading_symbol': 'HCLTECH-EQ'},
+            'WIPRO': {'token': '3787', 'exchange': 'NSE', 'trading_symbol': 'WIPRO-EQ'},
+            'M&M': {'token': '2031', 'exchange': 'NSE', 'trading_symbol': 'M&M-EQ'},
+            'TATAMOTORS': {'token': '3456', 'exchange': 'NSE', 'trading_symbol': 'TATAMOTORS-EQ'},
+            'TATASTEEL': {'token': '3499', 'exchange': 'NSE', 'trading_symbol': 'TATASTEEL-EQ'},
+            'SUNPHARMA': {'token': '3351', 'exchange': 'NSE', 'trading_symbol': 'SUNPHARMA-EQ'},
+            'NTPC': {'token': '11630', 'exchange': 'NSE', 'trading_symbol': 'NTPC-EQ'},
+            'POWERGRID': {'token': '14977', 'exchange': 'NSE', 'trading_symbol': 'POWERGRID-EQ'},
+            'ULTRACEMCO': {'token': '11532', 'exchange': 'NSE', 'trading_symbol': 'ULTRACEMCO-EQ'},
+            'BAJFINANCE': {'token': '317', 'exchange': 'NSE', 'trading_symbol': 'BAJFINANCE-EQ'},
+            'BAJAJFINSV': {'token': '16675', 'exchange': 'NSE', 'trading_symbol': 'BAJAJFINSV-EQ'},
+            'TECHM': {'token': '13538', 'exchange': 'NSE', 'trading_symbol': 'TECHM-EQ'},
+            'TITAN': {'token': '3506', 'exchange': 'NSE', 'trading_symbol': 'TITAN-EQ'},
+            'NESTLEIND': {'token': '17963', 'exchange': 'NSE', 'trading_symbol': 'NESTLEIND-EQ'},
+            'ADANIENT': {'token': '25', 'exchange': 'NSE', 'trading_symbol': 'ADANIENT-EQ'},
+            'ADANIPORTS': {'token': '15083', 'exchange': 'NSE', 'trading_symbol': 'ADANIPORTS-EQ'},
+            'COALINDIA': {'token': '20374', 'exchange': 'NSE', 'trading_symbol': 'COALINDIA-EQ'},
+            'JSWSTEEL': {'token': '11723', 'exchange': 'NSE', 'trading_symbol': 'JSWSTEEL-EQ'},
+            'INDUSINDBK': {'token': '5258', 'exchange': 'NSE', 'trading_symbol': 'INDUSINDBK-EQ'},
+            'ONGC': {'token': '2475', 'exchange': 'NSE', 'trading_symbol': 'ONGC-EQ'},
+            'HINDALCO': {'token': '1363', 'exchange': 'NSE', 'trading_symbol': 'HINDALCO-EQ'},
+            'GRASIM': {'token': '1232', 'exchange': 'NSE', 'trading_symbol': 'GRASIM-EQ'},
+            'CIPLA': {'token': '694', 'exchange': 'NSE', 'trading_symbol': 'CIPLA-EQ'},
+            'DRREDDY': {'token': '881', 'exchange': 'NSE', 'trading_symbol': 'DRREDDY-EQ'},
+            'DIVISLAB': {'token': '10940', 'exchange': 'NSE', 'trading_symbol': 'DIVISLAB-EQ'},
+            'EICHERMOT': {'token': '910', 'exchange': 'NSE', 'trading_symbol': 'EICHERMOT-EQ'},
+            'HEROMOTOCO': {'token': '1348', 'exchange': 'NSE', 'trading_symbol': 'HEROMOTOCO-EQ'},
+            'TATACONSUM': {'token': '3432', 'exchange': 'NSE', 'trading_symbol': 'TATACONSUM-EQ'},
+            'BRITANNIA': {'token': '547', 'exchange': 'NSE', 'trading_symbol': 'BRITANNIA-EQ'},
+            'BPCL': {'token': '526', 'exchange': 'NSE', 'trading_symbol': 'BPCL-EQ'},
+            'UPL': {'token': '11287', 'exchange': 'NSE', 'trading_symbol': 'UPL-EQ'},
+            'APOLLOHOSP': {'token': '157', 'exchange': 'NSE', 'trading_symbol': 'APOLLOHOSP-EQ'},
+            'SHRIRAMFIN': {'token': '4306', 'exchange': 'NSE', 'trading_symbol': 'SHRIRAMFIN-EQ'},
+            'LTIM': {'token': '17818', 'exchange': 'NSE', 'trading_symbol': 'LTIM-EQ'},
+            'TRENT': {'token': '1964', 'exchange': 'NSE', 'trading_symbol': 'TRENT-EQ'},
         }
         
         # Filter to only requested symbols

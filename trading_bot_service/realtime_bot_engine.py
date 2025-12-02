@@ -600,6 +600,48 @@ class RealtimeBotEngine:
         logger.info(f"Using fallback tokens for {len(filtered_tokens)} symbols")
         return filtered_tokens
     
+    def _load_bot_config(self) -> Dict:
+        """Load bot configuration from Firestore including portfolio value"""
+        try:
+            import firebase_admin
+            from firebase_admin import firestore
+            
+            db = firestore.client()
+            config_doc = db.collection('bot_configs').document(self.user_id).get()
+            
+            if config_doc.exists:
+                config = config_doc.to_dict()
+                logger.info(f"✅ Loaded bot config from Firestore for user {self.user_id}")
+                return config
+            else:
+                # Create default config if doesn't exist
+                default_config = {
+                    'portfolio_value': 100000.0,  # Default ₹1 lakh
+                    'trading_mode': 'paper',
+                    'max_position_size_pct': 0.02,
+                    'max_daily_loss_pct': 0.03,
+                    'max_portfolio_heat': 0.06,
+                    'max_open_positions': 5,
+                    'emergency_stop': False,
+                    'created_at': firestore.SERVER_TIMESTAMP
+                }
+                db.collection('bot_configs').document(self.user_id).set(default_config)
+                logger.info(f"📝 Created default bot config for user {self.user_id}")
+                return default_config
+                
+        except Exception as e:
+            logger.error(f"Failed to load bot config: {e}")
+            # Return defaults if Firestore fails
+            return {
+                'portfolio_value': 100000.0,
+                'trading_mode': 'paper',
+                'max_position_size_pct': 0.02,
+                'max_daily_loss_pct': 0.03,
+                'max_portfolio_heat': 0.06,
+                'max_open_positions': 5,
+                'emergency_stop': False
+            }
+    
     def _initialize_managers(self):
         """Initialize all trading managers"""
         from trading.patterns import PatternDetector
@@ -610,17 +652,22 @@ class RealtimeBotEngine:
         from advanced_screening_manager import AdvancedScreeningManager, AdvancedScreeningConfig
         from ml_data_logger import MLDataLogger
         
+        # Load bot configuration from Firestore (includes portfolio value)
+        bot_config = self._load_bot_config()
+        portfolio_value = bot_config.get('portfolio_value', 100000.0)
+        logger.info(f"💰 Portfolio Value: ₹{portfolio_value:,.2f}")
+        
         self._pattern_detector = PatternDetector()
         self._execution_manager = ExecutionManager(api_key=self.api_key, jwt_token=self.jwt_token)
         self._order_manager = OrderManager(self.api_key, self.jwt_token)
         
         risk_limits = RiskLimits(
-            max_position_size_pct=0.05,
-            max_daily_loss_pct=0.02,
-            max_portfolio_heat=0.20,
-            max_open_positions=5
+            max_position_size_pct=bot_config.get('max_position_size_pct', 0.05),
+            max_daily_loss_pct=bot_config.get('max_daily_loss_pct', 0.02),
+            max_portfolio_heat=bot_config.get('max_portfolio_heat', 0.20),
+            max_open_positions=bot_config.get('max_open_positions', 5)
         )
-        self._risk_manager = RiskManager(portfolio_value=100000.0, risk_limits=risk_limits)
+        self._risk_manager = RiskManager(portfolio_value=portfolio_value, risk_limits=risk_limits)
         self._position_manager = PositionManager()
         
         # NEW: Initialize Advanced 24-Level Screening Manager
@@ -629,7 +676,7 @@ class RealtimeBotEngine:
         screening_config.enable_tick_indicator = True  # Enable Level 22 (TICK)
         self._advanced_screening = AdvancedScreeningManager(
             config=screening_config,
-            portfolio_value=100000.0
+            portfolio_value=portfolio_value  # ✅ Use actual portfolio value
         )
         logger.info("✅ Advanced Screening Manager initialized (fail-safe mode: ON, TICK: ON)")
         
@@ -1329,6 +1376,26 @@ class RealtimeBotEngine:
         Runs every 0.5 seconds for instant detection.
         """
         try:
+            # Position reconciliation every 60 seconds (120 iterations * 0.5s)
+            if not hasattr(self, '_reconcile_counter'):
+                self._reconcile_counter = 0
+            self._reconcile_counter += 1
+            
+            if self._reconcile_counter >= 120:  # Every 60 seconds
+                self._reconcile_positions()
+                self._reconcile_counter = 0
+            
+            # Daily P&L calculation at market close (3:15 PM IST)
+            from datetime import datetime
+            now = datetime.now()
+            if now.hour == 15 and now.minute == 15 and not hasattr(self, '_daily_pnl_done'):
+                self._calculate_daily_pnl()
+                self._daily_pnl_done = True
+            elif now.hour != 15 or now.minute != 15:
+                # Reset flag for next day
+                if hasattr(self, '_daily_pnl_done'):
+                    delattr(self, '_daily_pnl_done')
+            
             positions = self._position_manager.get_all_positions()
             
             if not positions:
@@ -1426,6 +1493,17 @@ class RealtimeBotEngine:
                     outcome = 'BREAKEVEN'
                 
                 # Map exit reason
+    
+    def _reconcile_positions(self):
+        \"\"\"Cross-check bot's positions with broker's actual positions\"\"\"
+        try:
+            if self.trading_mode != 'live':
+                return  # Only reconcile in live mode
+            
+            # Get broker's actual positions
+            broker_positions = self._order_manager.get_positions()
+            if not broker_positions:
+                logger.debug(\"No broker positions returned (may be zero open positions)\")\n                return\n            \n            # Get bot's tracked positions\n            bot_positions = self._position_manager.get_all_positions()\n            \n            broker_symbols = set()\n            if isinstance(broker_positions, dict):\n                # Parse broker positions (format: {'data': [positions...]})\n                broker_data = broker_positions.get('data', [])\n                for pos in broker_data:\n                    if pos.get('netqty', '0') != '0':  # Has open quantity\n                        broker_symbols.add(pos['tradingsymbol'])\n            \n            bot_symbols = {pos['symbol'] for pos in bot_positions.values()}\n            \n            # Find discrepancies\n            bot_only = bot_symbols - broker_symbols\n            broker_only = broker_symbols - bot_symbols\n            \n            if bot_only:\n                logger.warning(f\"⚠️ POSITION MISMATCH: Bot has {bot_only} but broker doesn't\")\n                # Auto-close phantom positions\n                for symbol in bot_only:\n                    logger.warning(f\"Removing phantom position: {symbol}\")\n                    self._position_manager.close_position(symbol)\n            \n            if broker_only:\n                logger.warning(f\"⚠️ POSITION MISMATCH: Broker has {broker_only} but bot doesn't track them\")\n                # Don't auto-close - user may have manual positions\n            \n            if not bot_only and not broker_only:\n                logger.debug(\"✅ Position reconciliation: All positions match\")\n                \n        except Exception as e:\n            logger.error(f\"Position reconciliation error: {e}\", exc_info=True)\n    \n    def _calculate_daily_pnl(self):\n        \"\"\"Calculate and report end-of-day P&L\"\"\"
                 exit_reason_map = {
                     'STOP LOSS': 'STOP',
                     'TARGET': 'TARGET',
@@ -1471,4 +1549,71 @@ class RealtimeBotEngine:
         # Remove position
         self._position_manager.remove_position(symbol)
         logger.info(f"✅ Position closed")
+    
+    def _calculate_daily_pnl(self):
+        """Calculate and report end-of-day P&L"""
+        try:
+            from datetime import datetime, timedelta
+            import firebase_admin
+            from firebase_admin import firestore
+            
+            db = firestore.client()
+            today = datetime.now().date()
+            
+            # Query all closed positions for today
+            today_start = datetime.combine(today, datetime.min.time())
+            
+            # Get all exit signals from today
+            exit_signals = db.collection('trading_signals')\
+                .where('user_id', '==', self.user_id)\
+                .where('status', '==', 'closed')\
+                .where('timestamp', '>=', today_start)\
+                .stream()
+            
+            total_pnl = 0.0
+            win_count = 0
+            loss_count = 0
+            total_trades = 0
+            
+            for signal in exit_signals:
+                data = signal.to_dict()
+                pnl = data.get('pnl', 0)
+                total_pnl += pnl
+                total_trades += 1
+                
+                if pnl > 0:
+                    win_count += 1
+                elif pnl < 0:
+                    loss_count += 1
+            
+            # Calculate metrics
+            win_rate = (win_count / total_trades * 100) if total_trades > 0 else 0
+            
+            # Write daily summary to Firestore
+            daily_summary = {
+                'user_id': self.user_id,
+                'date': today.isoformat(),
+                'total_pnl': total_pnl,
+                'total_trades': total_trades,
+                'win_count': win_count,
+                'loss_count': loss_count,
+                'win_rate': win_rate,
+                'trading_mode': self.trading_mode,
+                'timestamp': firestore.SERVER_TIMESTAMP
+            }
+            
+            # Use date as document ID for easy querying
+            db.collection('daily_pnl').document(f"{self.user_id}_{today.isoformat()}").set(daily_summary)
+            
+            logger.info(f"📊 DAILY P&L SUMMARY ({today.isoformat()}):")
+            logger.info(f"  Total P&L: ₹{total_pnl:,.2f}")
+            logger.info(f"  Trades: {total_trades} (W: {win_count}, L: {loss_count})")
+            logger.info(f"  Win Rate: {win_rate:.1f}%")
+            logger.info(f"  Mode: {self.trading_mode.upper()}")
+            
+            return daily_summary
+            
+        except Exception as e:
+            logger.error(f"Failed to calculate daily P&L: {e}", exc_info=True)
+            return None
 

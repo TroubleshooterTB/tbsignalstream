@@ -332,6 +332,46 @@ def test_analysis():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/clear-old-signals', methods=['POST'])
+def clear_old_signals():
+    """Close all old/stale trading signals"""
+    try:
+        # Verify Firebase ID token
+        auth_header = request.headers.get('Authorization', '')
+        if not auth_header.startswith('Bearer '):
+            return jsonify({'error': 'Missing or invalid authorization header'}), 401
+        
+        id_token = auth_header.split('Bearer ')[1]
+        
+        try:
+            decoded_token = auth.verify_id_token(id_token)
+            user_id = decoded_token['uid']
+        except Exception as e:
+            logger.error(f"Token verification failed: {e}")
+            return jsonify({'error': 'Invalid authentication token'}), 401
+        
+        # Get all open signals for this user
+        signals_ref = db.collection('trading_signals').where('user_id', '==', user_id).where('status', '==', 'open')
+        docs = list(signals_ref.stream())
+        
+        count = 0
+        for doc in docs:
+            doc.reference.update({'status': 'closed'})
+            count += 1
+        
+        logger.info(f"Closed {count} old signals for user {user_id}")
+        
+        return jsonify({
+            'success': True,
+            'message': f'Successfully closed {count} old signals',
+            'count': count
+        }), 200
+    
+    except Exception as e:
+        logger.error(f"Error clearing old signals: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
     app.run(host='0.0.0.0', port=port, threaded=True)

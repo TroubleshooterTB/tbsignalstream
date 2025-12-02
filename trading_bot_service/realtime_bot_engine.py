@@ -552,10 +552,10 @@ class RealtimeBotEngine:
         self._order_manager = OrderManager(self.api_key, self.jwt_token)
         
         risk_limits = RiskLimits(
-            max_position_size_percent=0.05,
-            max_daily_loss_percent=0.02,
-            max_total_exposure_percent=0.20,
-            max_positions=5
+            max_position_size_pct=0.05,
+            max_daily_loss_pct=0.02,
+            max_portfolio_heat=0.20,
+            max_open_positions=5
         )
         self._risk_manager = RiskManager(portfolio_value=100000.0, risk_limits=risk_limits)
         self._position_manager = PositionManager()

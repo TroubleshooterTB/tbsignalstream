@@ -88,7 +88,30 @@ export const tradingBotApi = {
     positionSize?: number;
   }) => callCloudFunction('startLiveTradingBot', config),
   
-  stop: () => callCloudFunction('stopLiveTradingBot'),
+  stop: async () => {
+    const user = auth.currentUser;
+    if (!user) {
+      throw new Error('User not authenticated');
+    }
+    
+    const TRADING_BOT_SERVICE_URL = 'https://trading-bot-service-818546654122.us-central1.run.app';
+    const idToken = await user.getIdToken();
+    
+    const response = await fetch(`${TRADING_BOT_SERVICE_URL}/stop`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${idToken}`,
+        'Content-Type': 'application/json',
+      },
+    });
+    
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to stop bot');
+    }
+    
+    return response.json();
+  },
   
   status: async () => {
     try {

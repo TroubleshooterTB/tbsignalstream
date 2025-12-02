@@ -50,6 +50,10 @@ class PositionManager:
         """Checks if there is an active position for a given symbol."""
         return any(p['symbol'] == symbol and p['status'] == 'open' for p in self.open_positions)
 
+    def get_all_positions(self) -> List[Dict[str, Any]]:
+        """Returns a list of all open positions."""
+        return self.open_positions.copy()
+
     def get_all_positions_as_dataframe(self) -> pd.DataFrame:
         """Returns a DataFrame of all open and closed positions for logging."""
         if not self.open_positions and not self.closed_positions:

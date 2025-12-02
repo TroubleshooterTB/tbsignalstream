@@ -214,8 +214,8 @@ class RealtimeBotEngine:
     def _initialize_websocket(self):
         """Initialize WebSocket v2 connection"""
         try:
-            # Import WebSocket manager from local websocket module
-            from websocket.websocket_manager_v2 import AngelWebSocketV2Manager
+            # Import WebSocket manager from ws_manager module (renamed to avoid conflict)
+            from ws_manager.websocket_manager_v2 import AngelWebSocketV2Manager
             
             # Create WebSocket manager
             self.ws_manager = AngelWebSocketV2Manager(
@@ -468,81 +468,56 @@ class RealtimeBotEngine:
         return df
     
     def _get_symbol_tokens_parallel(self) -> Dict:
-        """Fetch symbol tokens in parallel with retry logic and exponential backoff"""
-        import concurrent.futures
+        """
+        Fetch symbol tokens sequentially to comply with Angel One rate limits.
+        
+        CRITICAL: searchScrip API has rate limit of 1 call/second per client code!
+        Reference: https://smartapi.angelbroking.com/docs/RateLimit
+        """
         import requests
         import time
         
-        def fetch_token(symbol, max_retries=3):
-            """Fetch token with retry logic"""
-            for attempt in range(max_retries):
-                try:
-                    # Add exponential backoff delay
-                    if attempt > 0:
-                        delay = min(2 ** attempt, 10)  # Max 10 seconds
-                        logger.info(f"Retry {attempt + 1}/{max_retries} for {symbol} after {delay}s delay")
-                        time.sleep(delay)
-                    
-                    url = f"{self.base_url}/rest/secure/angelbroking/order/v1/searchScrip"
-                    headers = {
-                        'Authorization': f'Bearer {self.jwt_token}',
-                        'Content-Type': 'application/json',
-                        'X-PrivateKey': self.api_key
-                    }
-                    payload = {"exchange": "NSE", "searchscrip": symbol}
-                    
-                    response = requests.post(url, json=payload, headers=headers, timeout=15)
-                    
-                    if response.status_code == 200:
-                        data = response.json()
-                        if data.get('status') and data.get('data'):
-                            scrip = data['data'][0]
-                            logger.info(f"✅ Successfully fetched token for {symbol}")
-                            return symbol, {
-                                'token': scrip.get('symboltoken'),
-                                'exchange': scrip.get('exch_seg', 'NSE'),
-                                'trading_symbol': scrip.get('tradingsymbol', symbol)
-                            }
-                    elif response.status_code == 429:  # Rate limit
-                        logger.warning(f"⚠️  Rate limited for {symbol}, will retry...")
-                        continue  # Retry with backoff
-                    else:
-                        logger.error(f"API error for {symbol}: {response.status_code}")
-                        
-                except requests.exceptions.SSLError as e:
-                    logger.error(f"SSL error for {symbol} (attempt {attempt + 1}): {e}")
-                    continue  # Retry
-                except requests.exceptions.ConnectionError as e:
-                    logger.error(f"Connection error for {symbol} (attempt {attempt + 1}): {e}")
-                    continue  # Retry
-                except Exception as e:
-                    logger.error(f"Error fetching token for {symbol} (attempt {attempt + 1}): {e}")
-                    if attempt < max_retries - 1:
-                        continue  # Retry
-                    
-            logger.warning(f"❌ Failed to fetch token for {symbol} after {max_retries} attempts")
-            return symbol, None
-        
-        # Fetch tokens in smaller batches to avoid overwhelming the API
         tokens = {}
-        batch_size = 10
-        symbol_batches = [self.symbols[i:i + batch_size] for i in range(0, len(self.symbols), batch_size)]
+        total = len(self.symbols)
         
-        for batch_idx, batch in enumerate(symbol_batches, 1):
-            logger.info(f"Fetching batch {batch_idx}/{len(symbol_batches)} ({len(batch)} symbols)...")
-            
-            with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:  # Reduced from 5
-                results = executor.map(fetch_token, batch)
+        logger.info(f"📊 Fetching tokens for {total} symbols (rate limited to 1/second)...")
+        logger.info(f"⏱️  Estimated time: ~{total} seconds")
+        
+        for idx, symbol in enumerate(self.symbols, 1):
+            try:
+                url = f"{self.base_url}/rest/secure/angelbroking/order/v1/searchScrip"
+                headers = {
+                    'Authorization': f'Bearer {self.jwt_token}',
+                    'Content-Type': 'application/json',
+                    'X-PrivateKey': self.api_key
+                }
+                payload = {"exchange": "NSE", "searchscrip": symbol}
                 
-                for symbol, token_info in results:
-                    if token_info:
-                        tokens[symbol] = token_info
+                response = requests.post(url, json=payload, headers=headers, timeout=10)
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    if data.get('status') and data.get('data'):
+                        scrip = data['data'][0]
+                        tokens[symbol] = {
+                            'token': scrip.get('symboltoken'),
+                            'exchange': scrip.get('exch_seg', 'NSE'),
+                            'trading_symbol': scrip.get('tradingsymbol', symbol)
+                        }
+                        logger.info(f"✅ [{idx}/{total}] Fetched {symbol}: {tokens[symbol]['token']}")
+                    else:
+                        logger.warning(f"⚠️  [{idx}/{total}] No data for {symbol}")
+                else:
+                    logger.error(f"❌ [{idx}/{total}] API error for {symbol}: {response.status_code}")
+                    
+            except Exception as e:
+                logger.error(f"❌ [{idx}/{total}] Error fetching {symbol}: {e}")
             
-            # Add delay between batches to avoid rate limiting
-            if batch_idx < len(symbol_batches):
-                time.sleep(1)
+            # CRITICAL: Enforce 1 second delay between calls to respect rate limit
+            if idx < total:
+                time.sleep(1.1)  # 1.1 seconds to be safe
         
-        logger.info(f"Successfully fetched {len(tokens)}/{len(self.symbols)} symbol tokens")
+        logger.info(f"✅ Successfully fetched {len(tokens)}/{total} symbol tokens")
         return tokens
     
     def _get_fallback_tokens(self) -> Dict:

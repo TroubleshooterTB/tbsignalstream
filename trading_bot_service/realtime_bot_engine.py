@@ -119,7 +119,17 @@ class RealtimeBotEngine:
                 logger.warning("⚠️  [DEBUG] Bot will continue with polling mode (no real-time ticks)")
                 self.ws_manager = None  # Bot will run without WebSocket
             
-            # Step 4: Subscribe to symbols (only if WebSocket is active)
+            # Step 4: Bootstrap historical candle data (CRITICAL FIX)
+            # Without this, bot needs 200 minutes to accumulate candles for indicators!
+            logger.info("📊 [CRITICAL] Bootstrapping historical candle data...")
+            try:
+                self._bootstrap_historical_candles()
+                logger.info("✅ [CRITICAL] Historical candles loaded - bot ready to trade immediately!")
+            except Exception as e:
+                logger.error(f"❌ [CRITICAL] Failed to bootstrap historical data: {e}", exc_info=True)
+                logger.warning("⚠️  Bot will need 200+ minutes to build candles from ticks")
+            
+            # Step 5: Subscribe to symbols (only if WebSocket is active)
             if self.ws_manager:
                 try:
                     self._subscribe_to_symbols()
@@ -128,7 +138,7 @@ class RealtimeBotEngine:
                     logger.error(f"Symbol subscription failed: {e}")
                     logger.warning("Bot will continue without real-time subscriptions")
             
-            # Step 5: Start position monitoring thread (runs every 0.5 seconds)
+            # Step 6: Start position monitoring thread (runs every 0.5 seconds)
             logger.info("Starting position monitoring thread...")
             self._monitoring_thread = threading.Thread(
                 target=self._continuous_position_monitoring,
@@ -136,7 +146,7 @@ class RealtimeBotEngine:
             )
             self._monitoring_thread.start()
             
-            # Step 6: Start candle builder thread (builds 1-min candles from ticks)
+            # Step 7: Start candle builder thread (builds 1-min candles from ticks)
             logger.info("Starting candle builder thread...")
             self._candle_builder_thread = threading.Thread(
                 target=self._continuous_candle_building,
@@ -144,7 +154,7 @@ class RealtimeBotEngine:
             )
             self._candle_builder_thread.start()
             
-            # Step 7: Main strategy execution loop (runs every 5 seconds)
+            # Step 8: Main strategy execution loop (runs every 5 seconds)
             logger.info("🚀 Real-time trading bot started successfully!")
             logger.info("Position monitoring: Every 0.5 seconds")
             logger.info("Strategy analysis: Every 5 seconds")
@@ -599,6 +609,82 @@ class RealtimeBotEngine:
         
         logger.info(f"Using fallback tokens for {len(filtered_tokens)} symbols")
         return filtered_tokens
+    
+    def _bootstrap_historical_candles(self):
+        """
+        🚨 CRITICAL FIX: Bootstrap historical candle data at bot startup.
+        
+        Problem: Bot was building candles ONLY from WebSocket ticks starting from zero.
+        This meant the bot needed 200+ minutes to accumulate enough candles for indicators!
+        
+        Solution: Fetch last 200 1-minute candles from Angel One Historical API on startup.
+        This allows immediate signal generation from 9:15 AM market open.
+        
+        API Limits (per Angel One docs):
+        - ONE_MINUTE: Max 30 days in one request
+        - Rate limit: Standard API rate limits apply
+        """
+        from datetime import datetime, timedelta
+        from historical_data_manager import HistoricalDataManager
+        
+        logger.info("📊 Fetching historical candles for immediate indicator calculation...")
+        
+        # Initialize historical data manager
+        hist_manager = HistoricalDataManager(
+            api_key=self.api_key,
+            jwt_token=self.jwt_token
+        )
+        
+        # Calculate time range (last 300 minutes to be safe, even accounting for gaps)
+        to_date = datetime.now()
+        from_date = to_date - timedelta(minutes=400)  # Extra buffer for market gaps
+        
+        success_count = 0
+        fail_count = 0
+        
+        for symbol in self.symbols:
+            try:
+                token_info = self.symbol_tokens.get(symbol)
+                if not token_info:
+                    logger.debug(f"⏭️  {symbol}: No token info, skipping")
+                    continue
+                
+                # Fetch 1-minute candles
+                df = hist_manager.fetch_historical_data(
+                    symbol=symbol,
+                    token=token_info['token'],
+                    exchange=token_info['exchange'],
+                    interval='ONE_MINUTE',
+                    from_date=from_date,
+                    to_date=to_date
+                )
+                
+                if df is not None and len(df) > 0:
+                    # Calculate indicators if we have enough data
+                    if len(df) >= 200:
+                        df = self._calculate_indicators(df)
+                    
+                    # Store in candle_data (thread-safe)
+                    with self._lock:
+                        self.candle_data[symbol] = df
+                    
+                    success_count += 1
+                    logger.info(f"✅ {symbol}: Loaded {len(df)} historical candles")
+                    
+                    # Rate limiting: Angel One has strict limits (1 req/sec for searchScrip)
+                    # Historical API likely has similar limits, be conservative
+                    time.sleep(0.5)  # 2 requests per second max
+                else:
+                    fail_count += 1
+                    logger.warning(f"⚠️  {symbol}: No historical data returned")
+                    
+            except Exception as e:
+                fail_count += 1
+                logger.error(f"❌ {symbol}: Failed to fetch historical data: {e}")
+                # Continue with other symbols even if one fails
+        
+        logger.info(f"📈 Historical data bootstrap complete: {success_count} success, {fail_count} failed")
+        logger.info(f"🎯 Bot ready for immediate signal generation with pre-loaded indicators!")
     
     def _load_bot_config(self) -> Dict:
         """Load bot configuration from Firestore including portfolio value"""

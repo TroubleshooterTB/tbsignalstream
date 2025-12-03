@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Ghost Signal Debugger</title>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+</head>
+<body>
+    <h1>Ghost Signal Debugger</h1>
+    <button onclick="checkAll()">Run Full Diagnostic</button>
+    <pre id="output"></pre>
+
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyDCxN5FqBxO5dOjIVQoVGnfbtlNyZ-kGsU",
+            authDomain: "tbsignalstream.firebaseapp.com",
+            projectId: "tbsignalstream",
+            storageBucket: "tbsignalstream.firebasestorage.app",
+            messagingSenderId: "818546654122",
+            appId: "1:818546654122:web:e0fc2d527ee6db9b7fa07b"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+
+        async function checkAll() {
+            const output = document.getElementById('output');
+            let report = '=== GHOST SIGNAL DIAGNOSTIC REPORT ===\n\n';
+
+            // 1. Check localStorage
+            report += '1. LOCAL STORAGE:\n';
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                const value = localStorage.getItem(key);
+                if (value && (value.includes('INFY') || value.includes('HDFCBANK') || value.includes('RELIANCE') || value.includes('1578') || value.includes('1000') || value.includes('1538'))) {
+                    report += `   FOUND: ${key} = ${value.substring(0, 200)}...\n`;
+                }
+            }
+            report += '   (localStorage check complete)\n\n';
+
+            // 2. Check sessionStorage
+            report += '2. SESSION STORAGE:\n';
+            for (let i = 0; i < sessionStorage.length; i++) {
+                const key = sessionStorage.key(i);
+                const value = sessionStorage.getItem(key);
+                if (value && (value.includes('INFY') || value.includes('HDFCBANK') || value.includes('RELIANCE'))) {
+                    report += `   FOUND: ${key} = ${value.substring(0, 200)}...\n`;
+                }
+            }
+            report += '   (sessionStorage check complete)\n\n';
+
+            // 3. Check Firestore trading_signals
+            report += '3. FIRESTORE trading_signals:\n';
+            try {
+                const snapshot = await db.collection('trading_signals').limit(10).get();
+                report += `   Found ${snapshot.size} documents\n`;
+                snapshot.forEach(doc => {
+                    const data = doc.data();
+                    report += `   - ${doc.id}: ${data.symbol} @ ${data.price} (${data.timestamp?.toDate()})\n`;
+                });
+            } catch (e) {
+                report += `   ERROR: ${e.message}\n`;
+            }
+            report += '\n';
+
+            // 4. Check IndexedDB
+            report += '4. INDEXED DB:\n';
+            const dbs = await indexedDB.databases();
+            report += `   Found ${dbs.length} databases: ${dbs.map(d => d.name).join(', ')}\n\n`;
+
+            // 5. Check Service Workers
+            report += '5. SERVICE WORKERS:\n';
+            if ('serviceWorker' in navigator) {
+                const registrations = await navigator.serviceWorker.getRegistrations();
+                report += `   Found ${registrations.length} service workers\n`;
+                registrations.forEach(reg => {
+                    report += `   - ${reg.scope} (state: ${reg.active?.state})\n`;
+                });
+            }
+            report += '\n';
+
+            // 6. Check Cache Storage
+            report += '6. CACHE STORAGE:\n';
+            if ('caches' in window) {
+                const cacheNames = await caches.keys();
+                report += `   Found ${cacheNames.length} caches: ${cacheNames.join(', ')}\n`;
+            }
+            report += '\n';
+
+            output.textContent = report;
+        }
+    </script>
+</body>
+</html>

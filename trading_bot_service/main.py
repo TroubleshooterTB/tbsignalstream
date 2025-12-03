@@ -125,6 +125,38 @@ def health_check():
     }), 200
 
 
+@app.route('/check-credentials', methods=['GET'])
+def check_credentials():
+    """Diagnostic endpoint to verify Angel One credentials are loaded"""
+    try:
+        credentials_status = {
+            'ANGEL_ONE_API_KEY': 'SET' if os.environ.get('ANGEL_ONE_API_KEY') else 'MISSING',
+            'ANGEL_ONE_API_SECRET': 'SET' if os.environ.get('ANGEL_ONE_API_SECRET') else 'MISSING',
+            'ANGEL_ONE_CLIENT_CODE': 'SET' if os.environ.get('ANGEL_ONE_CLIENT_CODE') else 'MISSING',
+            'ANGEL_ONE_PASSWORD': 'SET' if os.environ.get('ANGEL_ONE_PASSWORD') else 'MISSING',
+            'ANGEL_ONE_TOTP_SECRET': 'SET' if os.environ.get('ANGEL_ONE_TOTP_SECRET') else 'MISSING',
+        }
+        
+        # Show first 4 chars of API key for verification (safely)
+        api_key = os.environ.get('ANGEL_ONE_API_KEY', '')
+        api_key_preview = f"{api_key[:4]}..." if len(api_key) >= 4 else "EMPTY"
+        
+        all_set = all(status == 'SET' for status in credentials_status.values())
+        
+        from datetime import datetime
+        
+        return jsonify({
+            'status': 'OK' if all_set else 'INCOMPLETE',
+            'credentials': credentials_status,
+            'api_key_preview': api_key_preview,
+            'timestamp': datetime.utcnow().isoformat()
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Error checking credentials: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/start', methods=['POST'])
 def start_bot():
     """Start trading bot for a user"""

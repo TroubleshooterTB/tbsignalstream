@@ -27,16 +27,11 @@ class ExecutionManager:
     Orchestrates the 30-Point Grandmaster Checklist to validate potential trade entries.
     """
 
-    def __init__(self, api_key: Optional[str] = None, jwt_token: Optional[str] = None):
-        """Initializes the ExecutionManager with instances of the checker modules.
-        
-        Args:
-            api_key: Angel One API key (optional, for margin checks)
-            jwt_token: User's JWT token (optional, for margin checks)
-        """
+    def __init__(self):
+        """Initializes the ExecutionManager with instances of the checker modules."""
         self.macro_checker = MacroChecker()
         self.pattern_checker = AdvancedPriceActionAnalyzer()
-        self.execution_checker = ExecutionChecker(api_key=api_key, jwt_token=jwt_token)
+        self.execution_checker = ExecutionChecker()
         logging.info("ExecutionManager initialized with checker modules.")
 
 

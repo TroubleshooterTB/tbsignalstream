@@ -42,8 +42,21 @@ class RealtimeBotEngine:
         self.client_code = credentials.get('client_code', '')
         self.api_key = credentials.get('api_key', '')
         
-        if not all([self.jwt_token, self.feed_token, self.client_code, self.api_key]):
-            raise ValueError("Missing required credentials")
+        # Detailed credential validation
+        missing = []
+        if not self.jwt_token:
+            missing.append('jwt_token')
+        if not self.feed_token:
+            missing.append('feed_token')
+        if not self.client_code:
+            missing.append('client_code')
+        if not self.api_key:
+            missing.append('api_key')
+        
+        if missing:
+            error_msg = f"Missing credentials: {', '.join(missing)}. Please reconnect Angel One account."
+            logger.error(error_msg)
+            raise ValueError(error_msg)
         
         self.base_url = "https://apiconnect.angelone.in"
         
@@ -781,6 +794,30 @@ class RealtimeBotEngine:
         
         logger.info("✅ Trading managers initialized")
     
+    def _is_market_open(self):
+        """
+        Check if Indian stock market is currently open.
+        Trading Hours: 9:15 AM - 3:30 PM IST (Mon-Fri)
+        """
+        from datetime import datetime
+        
+        now = datetime.now()
+        
+        # Check if weekend
+        if now.weekday() >= 5:  # Saturday = 5, Sunday = 6
+            return False
+        
+        current_time = now.time()
+        market_open = datetime.strptime("09:15:00", "%H:%M:%S").time()
+        market_close = datetime.strptime("15:30:00", "%H:%M:%S").time()
+        
+        is_open = market_open <= current_time <= market_close
+        
+        if not is_open:
+            logger.debug(f"⏰ Market closed - Current time: {current_time.strftime('%H:%M:%S')}")
+        
+        return is_open
+    
     def _analyze_and_trade(self):
         """
         Main strategy execution (runs every 5 seconds).
@@ -788,6 +825,11 @@ class RealtimeBotEngine:
         """
         try:
             logger.debug(f"🔍 [DEBUG] _analyze_and_trade() called - Strategy: {self.strategy}")
+            
+            # Check if market is open before trading
+            if not self._is_market_open():
+                logger.debug("⏸️  Market is closed - skipping strategy execution")
+                return
             
             # Check EOD auto-close (3:15 PM for safety before broker's 3:20 PM)
             self._check_eod_auto_close()
@@ -1402,6 +1444,31 @@ class RealtimeBotEngine:
             logger.error(f"❌ [DEBUG] Failed to write signal to Firestore: {e}", exc_info=True)
         
         if self.trading_mode == 'live':
+            # 🚨 SAFETY CHECKS FOR LIVE TRADING
+            try:
+                # Check 1: Verify market is open
+                if not self._is_market_open():
+                    logger.error(f"❌ SAFETY: Cannot place order - market is closed")
+                    return
+                
+                # Check 2: Check position limit
+                current_positions = self._position_manager.get_all_positions()
+                max_positions = 5  # Safety limit
+                if len(current_positions) >= max_positions:
+                    logger.error(f"❌ SAFETY: Max positions ({max_positions}) reached")
+                    return
+                
+                # Check 3: Verify not already in position for this symbol
+                if symbol in current_positions:
+                    logger.warning(f"⚠️  SAFETY: Already in position for {symbol} - skipping")
+                    return
+                
+                logger.info("✅ SAFETY: All pre-order checks passed")
+                
+            except Exception as safety_err:
+                logger.error(f"❌ SAFETY CHECK FAILED: {safety_err}")
+                return
+            
             # Place real order with enhanced error handling
             transaction_type = TransactionType.BUY if direction == 'up' else TransactionType.SELL
             
@@ -1539,6 +1606,32 @@ class RealtimeBotEngine:
         logger.info(f"  P&L: ₹{pnl:.2f} ({pnl_percent:+.2f}%)")
         logger.info(f"  Duration: {holding_duration:.1f} minutes")
         logger.info(f"  Reason: {reason}")
+        
+        # 🔥 PLACE ACTUAL EXIT ORDER (LIVE MODE)
+        if self.trading_mode == 'live':
+            try:
+                token_info = self.symbol_tokens.get(symbol)
+                if token_info:
+                    logger.info(f"📤 Placing LIVE exit order for {symbol}")
+                    exit_order = self._order_manager.place_order(
+                        symbol=symbol,
+                        token=token_info['token'],
+                        exchange=token_info['exchange'],
+                        transaction_type=TransactionType.SELL,
+                        order_type=OrderType.MARKET,
+                        quantity=quantity,
+                        product_type=ProductType.INTRADAY
+                    )
+                    
+                    if exit_order:
+                        order_id = exit_order.get('orderid', 'unknown')
+                        logger.info(f"✅ LIVE exit order placed: {order_id}")
+                    else:
+                        logger.error(f"❌ Failed to place exit order for {symbol}")
+                else:
+                    logger.error(f"❌ Token info not found for {symbol}")
+            except Exception as order_err:
+                logger.error(f"❌ Exit order placement failed: {order_err}", exc_info=True)
         
         # 🔥 WRITE EXIT SIGNAL TO FIRESTORE
         try:

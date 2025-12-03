@@ -13,17 +13,7 @@ from typing import Dict, Any, List, Optional
 import numpy as np
 import logging
 
-# Configuration values (inline to avoid cross-module dependencies)
-POSITION_MANAGEMENT = {
-    'ATR_PERIOD': 14,
-    'TRAILING_STOP_ATR_FACTOR': 2.0,
-    'SCALE_OUT_PERCENTAGE': 0.5,
-}
-
-RISK_SETTINGS = {
-    'RISK_PER_TRADE_PERCENT': 1.0,
-    'ACCOUNT_EQUITY': 100000.0,
-}
+from src.config import POSITION_MANAGEMENT, RISK_SETTINGS # Import configurations
 
 # Set up basic logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -34,12 +24,12 @@ class PositionManager:
     """
 
     def __init__(self):
-        """Initializes the PositionManager with configurable parameters."""
+        """Initializes the PositionManager with configurable parameters from config.py."""
         self.open_positions: List[Dict[str, Any]] = []
         self.closed_positions: List[Dict[str, Any]] = []
         self.trade_id_counter: int = 0
         
-        # Load parameters from inline config
+        # Load parameters from config.py
         self.atr_period = POSITION_MANAGEMENT['ATR_PERIOD']
         self.trailing_stop_atr_factor = POSITION_MANAGEMENT['TRAILING_STOP_ATR_FACTOR']
         self.scale_out_percentage = POSITION_MANAGEMENT['SCALE_OUT_PERCENTAGE']
@@ -49,10 +39,6 @@ class PositionManager:
     def is_position_open(self, symbol: str) -> bool:
         """Checks if there is an active position for a given symbol."""
         return any(p['symbol'] == symbol and p['status'] == 'open' for p in self.open_positions)
-
-    def get_all_positions(self) -> List[Dict[str, Any]]:
-        """Returns a list of all open positions."""
-        return self.open_positions.copy()
 
     def get_all_positions_as_dataframe(self) -> pd.DataFrame:
         """Returns a DataFrame of all open and closed positions for logging."""

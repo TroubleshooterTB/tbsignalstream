@@ -6,7 +6,10 @@ const CLOUD_FUNCTIONS_BASE = 'https://us-central1-tbsignalstream.cloudfunctions.
 async function callCloudFunction(functionName: string, data: any = {}, timeoutMs: number = 30000) {
   const user = auth.currentUser;
   if (!user) {
-    throw new Error('User not authenticated');
+    // Instead of throwing, log and return a rejected promise with better context
+    const error = new Error('User not authenticated');
+    console.log(`[${functionName}] Cannot call function - user not authenticated`);
+    throw error;
   }
 
   const idToken = await user.getIdToken();
@@ -94,7 +97,7 @@ export const tradingBotApi = {
       throw new Error('User not authenticated');
     }
     
-    const TRADING_BOT_SERVICE_URL = 'https://trading-bot-service-818546654122.us-central1.run.app';
+    const TRADING_BOT_SERVICE_URL = 'https://trading-bot-service-818546654122.asia-south1.run.app';
     const idToken = await user.getIdToken();
     
     const response = await fetch(`${TRADING_BOT_SERVICE_URL}/stop`, {
@@ -115,14 +118,15 @@ export const tradingBotApi = {
   
   status: async () => {
     try {
-      // Return default status if user not authenticated
       const user = auth.currentUser;
       if (!user) {
+        // Silently return stopped status if not authenticated
+        console.log('[Bot Status] User not authenticated, returning stopped status');
         return { running: false, status: 'stopped' };
       }
       
       // Call Cloud Run service directly for status
-      const TRADING_BOT_SERVICE_URL = 'https://trading-bot-service-818546654122.us-central1.run.app';
+      const TRADING_BOT_SERVICE_URL = 'https://trading-bot-service-818546654122.asia-south1.run.app';
       const idToken = await user.getIdToken();
       
       const response = await fetch(`${TRADING_BOT_SERVICE_URL}/status`, {
@@ -140,7 +144,8 @@ export const tradingBotApi = {
       
       return response.json();
     } catch (error: any) {
-      console.error('Error fetching bot status:', error);
+      // Don't throw errors for status checks - just return stopped
+      console.log('[Bot Status] Error fetching status, returning stopped:', error.message);
       return { running: false, status: 'stopped' };
     }
   },

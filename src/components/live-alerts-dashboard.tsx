@@ -225,10 +225,28 @@ export function LiveAlertsDashboard() {
     );
 
     const unsubscribe = onSnapshot(signalsQuery, (snapshot) => {
+      console.log(`[Dashboard] 📊 Firestore snapshot received: ${snapshot.docs.length} total docs, ${snapshot.docChanges().length} changes`);
+      
       snapshot.docChanges().forEach((change) => {
+        console.log(`[Dashboard] Change type: ${change.type}, DocID: ${change.doc.id}`);
+        
         if (change.type === 'added') {
           const data = change.doc.data();
-          console.log('[Dashboard] New signal received:', data);
+          console.log('[Dashboard] 🔍 Raw signal data:', JSON.stringify(data, null, 2));
+          
+          // 🚫 ANTI-GHOST FILTER: Only accept signals from the last 5 minutes
+          const signalTime = data.timestamp?.toDate() || new Date(0);
+          const nowTime = new Date();
+          const ageInMinutes = (nowTime.getTime() - signalTime.getTime()) / 60000;
+          
+          console.log(`[Dashboard] ⏰ Signal age check: ${ageInMinutes.toFixed(2)} minutes old (limit: 5 min)`);
+          
+          if (ageInMinutes > 5) {
+            console.warn(`[Dashboard] ❌ REJECTING OLD SIGNAL: ${data.symbol} from ${signalTime.toISOString()} (${ageInMinutes.toFixed(1)} minutes ago)`);
+            return; // Skip this ghost signal
+          }
+          
+          console.log('[Dashboard] ✅ ACCEPTING FRESH SIGNAL:', data);
 
           const newAlert: Alert = {
             id: change.doc.id,
@@ -237,7 +255,7 @@ export function LiveAlertsDashboard() {
             confidence: data.confidence || 0.95,
             signal_type: data.signal_type as any,
             rationale: data.rationale || 'Trading bot signal',
-            timestamp: data.timestamp?.toDate() || new Date(),
+            timestamp: signalTime,
             type: data.type as AlertType,
           };
 
@@ -362,8 +380,19 @@ export function LiveAlertsDashboard() {
         
         {/* Live Alerts/Signals Table */}
         <Card>
-          <CardHeader>
+          <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle>Live Trading Signals</CardTitle>
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={() => {
+                console.log('[Dashboard] 🧹 Manual clear - removing all signals');
+                setAlerts([]);
+                toast({ title: "Signals Cleared", description: "All displayed signals have been removed" });
+              }}
+            >
+              Clear All
+            </Button>
           </CardHeader>
           <CardContent>
             <div className="overflow-hidden rounded-md border">
@@ -394,10 +423,8 @@ export function LiveAlertsDashboard() {
                         <TableCell className="w-[120px]">
                           {alert.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                         </TableCell>
-                        <TableCell className="font-medium">
-                          <Link href={`/analysis/${alert.ticker}`} className="hover:underline text-primary">
-                            {alert.ticker}
-                          </Link>
+                        <TableCell className="font-medium text-primary">
+                          {alert.ticker}
                         </TableCell>
                         <TableCell>
                           <Badge variant={alert.type === "BUY" ? "outline" : "secondary"} className={alert.type === 'BUY' ? 'border-green-500 text-green-500' : 'border-red-500 text-red-500'}>

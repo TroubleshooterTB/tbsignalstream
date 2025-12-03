@@ -1584,7 +1584,7 @@ class RealtimeBotEngine:
                 logger.error(f"Failed to log ML outcome: {e}")
     
     def _reconcile_positions(self):
-        \"\"\"Cross-check bot's positions with broker's actual positions\"\"\"
+        """Cross-check bot's positions with broker's actual positions"""
         try:
             if self.trading_mode != 'live':
                 return  # Only reconcile in live mode

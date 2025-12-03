@@ -231,8 +231,7 @@ def cancelOrder(request: https_fn.Request) -> https_fn.Response:
 @https_fn.on_request(
     cors=options.CorsOptions(
         cors_origins="*",
-        cors_methods=["get", "post", "options"],
-        cors_allowed_headers=["Authorization", "Content-Type"]
+        cors_methods=["get", "post", "options"]
     )
 )
 def getOrderBook(request: https_fn.Request) -> https_fn.Response:
@@ -271,8 +270,7 @@ def getOrderBook(request: https_fn.Request) -> https_fn.Response:
 @https_fn.on_request(
     cors=options.CorsOptions(
         cors_origins="*",
-        cors_methods=["get", "post", "options"],
-        cors_allowed_headers=["Authorization", "Content-Type"]
+        cors_methods=["get", "post", "options"]
     )
 )
 def getPositions(request: https_fn.Request) -> https_fn.Response:

@@ -107,10 +107,11 @@ export function TradingProvider({ children }: { children: React.ReactNode }) {
     try {
       const status = await tradingBotApi.status();
       const isRunning = status.running === true;
+      console.log('[TradingContext] Bot status check:', { status, isRunning });
       setIsBotRunning(isRunning);
     } catch (error) {
       // If status check fails, assume bot is not running
-      console.error('Error fetching bot status:', error);
+      console.error('[TradingContext] Error fetching bot status:', error);
       setIsBotRunning(false);
     }
   }, []);

@@ -15,6 +15,14 @@
     ],
     "rewrites": [
       {
+        "source": "/api/directAngelLogin",
+        "function": "directAngelLogin"
+      },
+      {
+        "source": "/api/marketData",
+        "function": "getMarketData"
+      },
+      {
         "source": "/**",
         "run": {
           "serviceId": "studio",

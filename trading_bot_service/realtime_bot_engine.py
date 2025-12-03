@@ -1592,7 +1592,45 @@ class RealtimeBotEngine:
             # Get broker's actual positions
             broker_positions = self._order_manager.get_positions()
             if not broker_positions:
-                logger.debug(\"No broker positions returned (may be zero open positions)\")\n                return\n            \n            # Get bot's tracked positions\n            bot_positions = self._position_manager.get_all_positions()\n            \n            broker_symbols = set()\n            if isinstance(broker_positions, dict):\n                # Parse broker positions (format: {'data': [positions...]})\n                broker_data = broker_positions.get('data', [])\n                for pos in broker_data:\n                    if pos.get('netqty', '0') != '0':  # Has open quantity\n                        broker_symbols.add(pos['tradingsymbol'])\n            \n            bot_symbols = {pos['symbol'] for pos in bot_positions.values()}\n            \n            # Find discrepancies\n            bot_only = bot_symbols - broker_symbols\n            broker_only = broker_symbols - bot_symbols\n            \n            if bot_only:\n                logger.warning(f\"⚠️ POSITION MISMATCH: Bot has {bot_only} but broker doesn't\")\n                # Auto-close phantom positions\n                for symbol in bot_only:\n                    logger.warning(f\"Removing phantom position: {symbol}\")\n                    self._position_manager.close_position(symbol)\n            \n            if broker_only:\n                logger.warning(f\"⚠️ POSITION MISMATCH: Broker has {broker_only} but bot doesn't track them\")\n                # Don't auto-close - user may have manual positions\n            \n            if not bot_only and not broker_only:\n                logger.debug(\"✅ Position reconciliation: All positions match\")\n                \n        except Exception as e:\n            logger.error(f\"Position reconciliation error: {e}\", exc_info=True)\n    \n    def _calculate_daily_pnl(self):\n        \"\"\"Calculate and report end-of-day P&L\"\"\"
+                logger.debug("No broker positions returned (may be zero open positions)")
+                return
+            
+            # Get bot's tracked positions
+            bot_positions = self._position_manager.get_all_positions()
+            
+            broker_symbols = set()
+            if isinstance(broker_positions, dict):
+                # Parse broker positions (format: {'data': [positions...]})
+                broker_data = broker_positions.get('data', [])
+                for pos in broker_data:
+                    if pos.get('netqty', '0') != '0':  # Has open quantity
+                        broker_symbols.add(pos['tradingsymbol'])
+            
+            bot_symbols = {pos['symbol'] for pos in bot_positions.values()}
+            
+            # Find discrepancies
+            bot_only = bot_symbols - broker_symbols
+            broker_only = broker_symbols - bot_symbols
+            
+            if bot_only:
+                logger.warning(f"⚠️ POSITION MISMATCH: Bot has {bot_only} but broker doesn't")
+                # Auto-close phantom positions
+                for symbol in bot_only:
+                    logger.warning(f"Removing phantom position: {symbol}")
+                    self._position_manager.close_position(symbol)
+            
+            if broker_only:
+                logger.warning(f"⚠️ POSITION MISMATCH: Broker has {broker_only} but bot doesn't track them")
+                # Don't auto-close - user may have manual positions
+            
+            if not bot_only and not broker_only:
+                logger.debug("✅ Position reconciliation: All positions match")
+                
+        except Exception as e:
+            logger.error(f"Position reconciliation error: {e}", exc_info=True)
+    
+    def _calculate_daily_pnl(self):
+        """Calculate and report end-of-day P&L"""
                 exit_reason_map = {
                     'STOP LOSS': 'STOP',
                     'TARGET': 'TARGET',

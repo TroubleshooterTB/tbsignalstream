@@ -36,5 +36,17 @@ service cloud.firestore {
       allow read: if request.auth != null;
       allow write: if false; // Only Cloud Functions can write
     }
+    
+    // Trading signals - bot-generated signals
+    match /trading_signals/{signalId} {
+      allow read: if request.auth != null && resource.data.user_id == request.auth.uid;
+      allow write: if request.auth != null; // Bot can create signals for user
+      allow delete: if request.auth != null && resource.data.user_id == request.auth.uid;
+    }
+    
+    // Bot configurations - per-user settings
+    match /bot_configs/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
   }
 }

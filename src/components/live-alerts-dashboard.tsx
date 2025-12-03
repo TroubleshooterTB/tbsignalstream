@@ -82,8 +82,19 @@ export function LiveAlertsDashboard() {
   // 🧹 CLEANUP: Ensure fresh state on mount - no ghost signals
   useEffect(() => {
     console.log('[Dashboard] Component mounted - clearing any stale state');
+    
+    // Clear ALL potential sources of ghost signals
     setAlerts([]);
     setOpenPositions(new Map());
+    
+    // Clear localStorage that might contain old trade data
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('tradeLog');
+      localStorage.removeItem('cachedSignals');
+      sessionStorage.removeItem('cachedSignals');
+      console.log('[Dashboard] Cleared localStorage/sessionStorage');
+    }
+    
     setIsMounted(true);
   }, []);
 

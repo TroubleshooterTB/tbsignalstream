@@ -26,11 +26,13 @@ const LiveAlertsDashboard = dynamic(
 export default function Home() {
   // Force clear any stale data on mount
   useEffect(() => {
-    console.log('[App] Page mounted - v2.1');
+    console.log('[App] Page mounted - v2.2 - GHOST SIGNAL FIX');
     // Clear any potential browser cache
     if (typeof window !== 'undefined') {
       localStorage.removeItem('cachedSignals');
+      localStorage.removeItem('tradeLog');
       sessionStorage.removeItem('cachedSignals');
+      console.log('[App] Cleared all cached data');
     }
   }, []);
   

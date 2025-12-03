@@ -1578,7 +1578,10 @@ class RealtimeBotEngine:
                 else:
                     outcome = 'BREAKEVEN'
                 
-                # Map exit reason
+                # Map exit reason and log outcome
+                self._ml_logger.log_outcome(ml_signal_id, outcome, pnl_percent)
+            except Exception as e:
+                logger.error(f"Failed to log ML outcome: {e}")
     
     def _reconcile_positions(self):
         \"\"\"Cross-check bot's positions with broker's actual positions\"\"\"

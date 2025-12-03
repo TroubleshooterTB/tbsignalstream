@@ -118,6 +118,13 @@ export function TradingProvider({ children }: { children: React.ReactNode }) {
   // Poll bot status from backend
   const refreshBotStatus = useCallback(async () => {
     try {
+      // Only check status if user is authenticated
+      if (!auth.currentUser) {
+        console.log('[TradingContext] Skipping bot status check - user not authenticated');
+        setIsBotRunning(false);
+        return;
+      }
+      
       const status = await tradingBotApi.status();
       const isRunning = status.running === true;
       console.log('[TradingContext] Bot status check:', { status, isRunning });
@@ -212,15 +219,23 @@ export function TradingProvider({ children }: { children: React.ReactNode }) {
     setBotConfig(prev => ({ ...prev, ...newConfig }));
   }, []);
   
-  // Poll bot status every 10 seconds (only on client)
+  // Poll bot status every 10 seconds (only when client-side and authenticated)
   useEffect(() => {
     if (!isMounted || !isAuthReady) return;
     
-    // Wait for auth to initialize before first status check
+    // Only poll if user is authenticated
+    if (!auth.currentUser) {
+      console.log('[TradingContext] Skipping bot status polling - user not authenticated');
+      setIsBotRunning(false);
+      return;
+    }
+    
+    // Initial status check after 2 seconds to ensure auth is fully ready
     const initialTimeout = setTimeout(() => {
       refreshBotStatus();
-    }, 1000); // 1 second delay for auth to initialize
+    }, 2000);
     
+    // Poll every 10 seconds
     const interval = setInterval(() => {
       refreshBotStatus();
     }, 10000);

@@ -141,6 +141,7 @@ export const tradingBotApi = {
   },
   
   status: async () => {
+    // NEVER throw errors from status checks - always return gracefully
     try {
       const user = auth.currentUser;
       if (!user) {
@@ -162,14 +163,16 @@ export const tradingBotApi = {
       });
       
       if (!response.ok) {
-        console.warn(`Bot status check failed: ${response.statusText}`);
+        console.warn(`[Bot Status] Check failed: ${response.statusText}`);
         return { running: false, status: 'stopped' };
       }
       
-      return response.json();
+      const data = await response.json();
+      console.log('[Bot Status] Received from server:', data);
+      return data;
     } catch (error: any) {
       // Don't throw errors for status checks - just return stopped
-      console.log('[Bot Status] Error fetching status, returning stopped:', error.message);
+      console.log('[Bot Status] Error fetching status, returning stopped:', error?.message || error);
       return { running: false, status: 'stopped' };
     }
   },

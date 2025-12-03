@@ -4,6 +4,8 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import { websocketApi, tradingBotApi } from '@/lib/trading-api';
 import { useToast } from '@/hooks/use-toast';
 import { NIFTY_50_SYMBOLS_STRING } from '@/lib/nifty50-symbols';
+import { auth } from '@/lib/firebase';
+import { onAuthStateChanged } from 'firebase/auth';
 
 interface TradingState {
   // WebSocket state
@@ -40,6 +42,7 @@ const TradingContext = createContext<TradingContextType | undefined>(undefined);
 
 export function TradingProvider({ children }: { children: React.ReactNode }) {
   const [isMounted, setIsMounted] = useState(false);
+  const [isAuthReady, setIsAuthReady] = useState(false);
   const { toast } = useToast();
   
   // WebSocket state
@@ -59,6 +62,16 @@ export function TradingProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     setIsMounted(true);
+  }, []);
+  
+  // Wait for auth state to be ready
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setIsAuthReady(true);
+      console.log('[TradingContext] Auth state ready, user:', user?.email || 'not signed in');
+    });
+    
+    return () => unsubscribe();
   }, []);
   
   // WebSocket methods
@@ -201,17 +214,22 @@ export function TradingProvider({ children }: { children: React.ReactNode }) {
   
   // Poll bot status every 10 seconds (only on client)
   useEffect(() => {
-    if (!isMounted) return;
+    if (!isMounted || !isAuthReady) return;
+    
+    // Wait for auth to initialize before first status check
+    const initialTimeout = setTimeout(() => {
+      refreshBotStatus();
+    }, 1000); // 1 second delay for auth to initialize
     
     const interval = setInterval(() => {
       refreshBotStatus();
     }, 10000);
     
-    // Initial status check
-    refreshBotStatus();
-    
-    return () => clearInterval(interval);
-  }, [refreshBotStatus, isMounted]);
+    return () => {
+      clearTimeout(initialTimeout);
+      clearInterval(interval);
+    };
+  }, [refreshBotStatus, isMounted, isAuthReady]);
   
   const value: TradingContextType = {
     // State

@@ -1631,54 +1631,6 @@ class RealtimeBotEngine:
     
     def _calculate_daily_pnl(self):
         """Calculate and report end-of-day P&L"""
-                exit_reason_map = {
-                    'STOP LOSS': 'STOP',
-                    'TARGET': 'TARGET',
-                    'TRAILING STOP': 'TRAILING',
-                    'EOD': 'EOD',
-                    'MANUAL': 'MANUAL'
-                }
-                exit_reason = exit_reason_map.get(reason.upper(), 'OTHER')
-                
-                outcome_data = {
-                    'outcome': outcome,
-                    'exit_price': exit_price,
-                    'pnl': pnl,
-                    'pnl_percent': pnl_percent,
-                    'holding_duration_minutes': int(holding_duration),
-                    'exit_reason': exit_reason
-                }
-                
-                self._ml_logger.update_outcome(ml_signal_id, outcome_data)
-                logger.info(f"📊 ML outcome logged: {outcome} (signal_id: {ml_signal_id})")
-                
-            except Exception as log_err:
-                logger.debug(f"ML outcome logging error: {log_err}")
-        
-        if self.trading_mode == 'live':
-            token_info = self.symbol_tokens.get(symbol)
-            if token_info:
-                exit_order = self._order_manager.place_order(
-                    symbol=symbol,
-                    token=token_info['token'],
-                    exchange=token_info['exchange'],
-                    transaction_type=TransactionType.SELL,
-                    order_type=OrderType.MARKET,
-                    quantity=quantity,
-                    product_type=ProductType.INTRADAY
-                )
-                
-                if exit_order:
-                    logger.info(f"✅ LIVE exit order placed")
-                else:
-                    logger.error(f"❌ Failed to place exit order")
-        
-        # Remove position
-        self._position_manager.remove_position(symbol)
-        logger.info(f"✅ Position closed")
-    
-    def _calculate_daily_pnl(self):
-        """Calculate and report end-of-day P&L"""
         try:
             from datetime import datetime, timedelta
             import firebase_admin

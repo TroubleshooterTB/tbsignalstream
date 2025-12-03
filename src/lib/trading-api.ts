@@ -83,13 +83,37 @@ export const orderApi = {
 
 // Trading Bot Functions
 export const tradingBotApi = {
-  start: (config: {
+  start: async (config: {
     symbols: string[];
     mode?: 'paper' | 'live';
     strategy?: 'pattern' | 'ironclad' | 'both';
     maxPositions?: number;
     positionSize?: number;
-  }) => callCloudFunction('startLiveTradingBot', config),
+  }) => {
+    const user = auth.currentUser;
+    if (!user) {
+      throw new Error('User not authenticated');
+    }
+    
+    const TRADING_BOT_SERVICE_URL = 'https://trading-bot-service-vmxfbt7qiq-el.a.run.app';
+    const idToken = await user.getIdToken();
+    
+    const response = await fetch(`${TRADING_BOT_SERVICE_URL}/start`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${idToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(config),
+    });
+    
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: 'Failed to start bot' }));
+      throw new Error(error.error || 'Failed to start bot');
+    }
+    
+    return response.json();
+  },
   
   stop: async () => {
     const user = auth.currentUser;

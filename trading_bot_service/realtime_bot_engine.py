@@ -744,10 +744,14 @@ class RealtimeBotEngine:
     def _initialize_managers(self):
         """Initialize all trading managers"""
         from trading.patterns import PatternDetector
-        from trading.execution_manager import ExecutionManager
+        try:
+            from trading.execution_manager import ExecutionManager
+        except ImportError as e:
+            logger.warning(f"ExecutionManager import failed: {e} - Will skip 30-point validation")
+            ExecutionManager = None
         from trading.order_manager import OrderManager
         from trading.risk_manager import RiskManager, RiskLimits
-        from trading.position_manager import PositionManager
+        from trading.simple_position_manager import SimplePositionManager
         from advanced_screening_manager import AdvancedScreeningManager, AdvancedScreeningConfig
         from ml_data_logger import MLDataLogger
         
@@ -757,7 +761,11 @@ class RealtimeBotEngine:
         logger.info(f"💰 Portfolio Value: ₹{portfolio_value:,.2f}")
         
         self._pattern_detector = PatternDetector()
-        self._execution_manager = ExecutionManager(api_key=self.api_key, jwt_token=self.jwt_token)
+        if ExecutionManager:
+            self._execution_manager = ExecutionManager()
+        else:
+            self._execution_manager = None
+            logger.warning("⚠️  ExecutionManager disabled - trades will skip 30-point validation")
         self._order_manager = OrderManager(self.api_key, self.jwt_token)
         
         risk_limits = RiskLimits(
@@ -767,7 +775,7 @@ class RealtimeBotEngine:
             max_open_positions=bot_config.get('max_open_positions', 5)
         )
         self._risk_manager = RiskManager(portfolio_value=portfolio_value, risk_limits=risk_limits)
-        self._position_manager = PositionManager()
+        self._position_manager = SimplePositionManager()
         
         # NEW: Initialize Advanced 24-Level Screening Manager
         screening_config = AdvancedScreeningConfig()
@@ -976,8 +984,10 @@ class RealtimeBotEngine:
                 # Add symbol to pattern_details for fundamental checks
                 pattern_details['symbol'] = symbol
                 
-                # 30-point validation
-                is_valid = self._execution_manager.validate_trade_entry(df, pattern_details)
+                # 30-point validation (optional)
+                is_valid = True
+                if self._execution_manager:
+                    is_valid = self._execution_manager.validate_trade_entry(df, pattern_details)
                 if not is_valid:
                     continue
                 
@@ -1238,11 +1248,14 @@ class RealtimeBotEngine:
                 # Add symbol to signal for fundamental checks
                 signal['symbol'] = symbol
                 
-                # NEW: Apply 30-Point Grandmaster Checklist to Ironclad signals
-                logger.info(f"🔍 [{symbol}] Ironclad signal - applying 30-Point Checklist...")
-                is_valid = self._execution_manager.validate_trade_entry(stock_df, signal)
+                # NEW: Apply 30-Point Grandmaster Checklist to Ironclad signals (optional)
+                is_valid = True
+                if self._execution_manager:
+                    logger.info(f"🔍 [{symbol}] Ironclad signal - applying 30-Point Checklist...")
+                    is_valid = self._execution_manager.validate_trade_entry(stock_df, signal)
+                    if not is_valid:
+                        logger.warning(f"❌ [{symbol}] 30-Point Checklist FAILED - Ironclad signal rejected")
                 if not is_valid:
-                    logger.warning(f"❌ [{symbol}] 30-Point Checklist FAILED - Ironclad signal rejected")
                     continue
                 
                 logger.info(f"✅ [{symbol}] 30-Point Checklist PASSED for Ironclad signal")

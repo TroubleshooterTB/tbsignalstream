@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 // Import the initialized auth and db from our central firebase.js file
-import { auth, db } from '../firebase';
+import { auth, db } from '@/lib/firebase';
 import { sendSignInLinkToEmail, isSignInWithEmailLink, signInWithEmailLink, onAuthStateChanged } from 'firebase/auth';
 import {
     doc, collection, query, limit, onSnapshot

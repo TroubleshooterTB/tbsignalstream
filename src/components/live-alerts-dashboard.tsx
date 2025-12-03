@@ -28,6 +28,8 @@ import { OrderManager } from "@/components/order-manager";
 import { TradingBotControls } from "@/components/trading-bot-controls";
 import { PositionsMonitor } from "@/components/positions-monitor";
 import { OrderBook } from "@/components/order-book";
+import { db } from "@/lib/firebase";
+import { onSnapshot, collection, query, where, orderBy, limit } from "firebase/firestore";
 
 type AlertType = "BUY" | "SELL";
 
@@ -209,9 +211,6 @@ export function LiveAlertsDashboard() {
   // 🔥 LISTEN TO REAL SIGNALS FROM FIRESTORE (bot-generated)
   useEffect(() => {
     if (!firebaseUser) return;
-
-    const { onSnapshot, collection, query, where, orderBy, limit } = require('firebase/firestore');
-    const { db } = require('@/lib/firebase');
 
     console.log('[Dashboard] Setting up real-time signal listener...');
 

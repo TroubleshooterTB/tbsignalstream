@@ -127,9 +127,26 @@ class RealtimeBotEngine:
             try:
                 self._initialize_websocket()
                 logger.info("✅ [DEBUG] WebSocket initialized and connected")
+                
+                # CRITICAL: Verify WebSocket is actually receiving data
+                logger.info("⏳ [VERIFY] Waiting 10 seconds for first ticks to verify data flow...")
+                import time
+                time.sleep(10)
+                
+                with self._lock:
+                    num_symbols_with_prices = len(self.latest_prices)
+                
+                if num_symbols_with_prices > 0:
+                    logger.info(f"✅ [VERIFY] WebSocket receiving data: {num_symbols_with_prices} symbols have prices")
+                else:
+                    logger.error("❌ [VERIFY] WebSocket NOT receiving data - no price updates after 10 seconds")
+                    logger.error("❌ Position monitoring will FAIL without price data")
+                    logger.error("❌ RECOMMENDATION: Use paper mode only or fix WebSocket connection")
+                    
             except Exception as e:
                 logger.error(f"❌ [DEBUG] WebSocket initialization failed: {e}", exc_info=True)
                 logger.warning("⚠️  [DEBUG] Bot will continue with polling mode (no real-time ticks)")
+                logger.warning("⚠️  Position monitoring will NOT work without WebSocket")
                 self.ws_manager = None  # Bot will run without WebSocket
             
             # Step 4: Bootstrap historical candle data (CRITICAL FIX)
@@ -327,17 +344,25 @@ class RealtimeBotEngine:
             # Find symbol for this token
             symbol = None
             for sym, token_info in self.symbol_tokens.items():
-                if token_info['token'] == token:
+                if str(token_info['token']) == token:
                     symbol = sym
                     break
             
             if not symbol:
+                logger.debug(f"Tick received for unknown token: {token}")
                 return
             
             # Thread-safe update
             with self._lock:
                 # Update latest price
+                old_price = self.latest_prices.get(symbol, 0)
                 self.latest_prices[symbol] = ltp
+                
+                # Log first tick and significant price changes
+                if old_price == 0:
+                    logger.info(f"🟢 First tick: {symbol} @ ₹{ltp:.2f}")
+                elif abs(ltp - old_price) / old_price > 0.01:  # >1% change
+                    logger.debug(f"📊 Price update: {symbol} {old_price:.2f} → {ltp:.2f}")
                 
                 # Store tick data
                 self.tick_data[symbol].append({
@@ -1570,6 +1595,14 @@ class RealtimeBotEngine:
             # Get latest prices (thread-safe)
             with self._lock:
                 current_prices = self.latest_prices.copy()
+            
+            # CRITICAL: Warn if no price data available
+            if not current_prices:
+                if not hasattr(self, '_no_price_warning_logged'):
+                    logger.error("⚠️  CRITICAL: No price data available - positions cannot be monitored!")
+                    logger.error("⚠️  WebSocket may not be connected or not receiving ticks")
+                    self._no_price_warning_logged = True
+                return
             
             for symbol, position in positions.items():
                 # Get real-time price

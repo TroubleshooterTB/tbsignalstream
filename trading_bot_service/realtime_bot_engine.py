@@ -556,6 +556,12 @@ class RealtimeBotEngine:
                 headers = {
                     'Authorization': f'Bearer {self.jwt_token}',
                     'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-UserType': 'USER',
+                    'X-SourceID': 'WEB',
+                    'X-ClientLocalIP': '127.0.0.1',
+                    'X-ClientPublicIP': '127.0.0.1',
+                    'X-MACAddress': '00:00:00:00:00:00',
                     'X-PrivateKey': self.api_key
                 }
                 payload = {"exchange": "NSE", "searchscrip": symbol}

@@ -67,19 +67,14 @@ def _env_first(*names, default=None):
     return default
 
 
-# Normalize supported environment variable names for Angel One credentials.
-# The repo historically uses several naming conventions (e.g. ANGELONE_TRADING_API_KEY
-# vs ANGELONE_API_KEY_TRADING). This mapping tries common variants so code can
-# read a single canonical value regardless of which name is set in the runtime.
+# Angel One API credentials using NEW LOGIN system (single Trading API)
+# This replaced the old multi-API system (Historical, Market, Publisher) as of Nov 2025
 ANGEL_ONE_API = {
-    'API_KEY_HISTORICAL': _env_first('ANGELONE_HISTORICAL_API_KEY', 'ANGELONE_API_KEY_HISTORICAL', default='YOUR_HISTORICAL_API_KEY_HERE'),
-    'API_KEY_TRADING': _env_first('ANGELONE_TRADING_API_KEY', 'ANGELONE_API_KEY_TRADING', default='YOUR_TRADING_API_KEY_HERE'),
-    'API_KEY_PUBLISHER': _env_first('ANGELONE_PUBLISHER_API_KEY', 'ANGELONE_API_KEY_PUBLISHER', default='YOUR_PUBLISHER_API_KEY_HERE'),
-    'API_KEY_MARKET': _env_first('ANGELONE_MARKET_API_KEY', 'ANGELONE_API_KEY_MARKET', default='YOUR_MARKET_API_KEY_HERE'),
+    'API_KEY': _env_first('ANGELONE_TRADING_API_KEY', 'ANGELONE_API_KEY', default='YOUR_TRADING_API_KEY_HERE'),
+    'API_SECRET': _env_first('ANGELONE_TRADING_SECRET', 'ANGELONE_API_SECRET', default='YOUR_TRADING_SECRET_HERE'),
     'CLIENT_CODE': _env_first('ANGELONE_CLIENT_CODE', 'ANGELONE_CLIENT', default='YOUR_CLIENT_CODE_HERE'),
-    'PASSWORD': _env_first('ANGELONE_PASSWORD', 'ANGELONE_PASSWORD', default='YOUR_PASSWORD_HERE'),
+    'PASSWORD': _env_first('ANGELONE_PASSWORD', default='YOUR_PASSWORD_HERE'),
     'TOTP_SECRET': _env_first('ANGELONE_TOTP_SECRET', 'ANGELONE_TOTP_TOKEN', default='YOUR_TOTP_SECRET_HERE'),
-    'TRADING_API_SECRET': _env_first('ANGELONE_TRADING_SECRET', 'ANGELONE_TRADING_API_SECRET', default=None),
 }
 
 # --- Firestore Configuration ---

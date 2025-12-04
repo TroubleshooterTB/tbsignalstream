@@ -125,6 +125,7 @@ class RealtimeBotEngine:
             # Step 3: Initialize WebSocket connection - WITH ERROR HANDLING
             logger.info("🔌 [DEBUG] Initializing WebSocket connection...")
             try:
+                logger.info("🔌 [DEBUG] About to call _initialize_websocket()...")
                 self._initialize_websocket()
                 logger.info("✅ [DEBUG] WebSocket initialized and connected")
                 
@@ -132,6 +133,7 @@ class RealtimeBotEngine:
                 logger.info("⏳ [VERIFY] Waiting 10 seconds for first ticks to verify data flow...")
                 import time
                 time.sleep(10)
+                logger.info("✅ [VERIFY] 10-second wait complete, checking for price data...")
                 
                 with self._lock:
                     num_symbols_with_prices = len(self.latest_prices)
@@ -152,11 +154,15 @@ class RealtimeBotEngine:
             # Step 4: Bootstrap historical candle data (CRITICAL FIX)
             # Without this, bot needs 200 minutes to accumulate candles for indicators!
             logger.info("📊 [CRITICAL] Bootstrapping historical candle data...")
+            logger.info("📊 [CRITICAL] About to call _bootstrap_historical_candles()...")
             try:
+                logger.info("📊 [CRITICAL] Calling bootstrap function NOW...")
                 self._bootstrap_historical_candles()
                 logger.info("✅ [CRITICAL] Historical candles loaded - bot ready to trade immediately!")
             except Exception as e:
                 logger.error(f"❌ [CRITICAL] Failed to bootstrap historical data: {e}", exc_info=True)
+                logger.error(f"❌ [CRITICAL] Error type: {type(e).__name__}")
+                logger.error(f"❌ [CRITICAL] Error details: {str(e)}")
                 logger.warning("⚠️  Bot will need 200+ minutes to build candles from ticks")
             
             # Step 5: Subscribe to symbols (only if WebSocket is active)
@@ -662,8 +668,11 @@ class RealtimeBotEngine:
         - ONE_MINUTE: Max 30 days in one request
         - Rate limit: Standard API rate limits apply
         """
+        logger.info("📊 [BOOTSTRAP] Function called, importing dependencies...")
         from datetime import datetime, timedelta
+        logger.info("📊 [BOOTSTRAP] Datetime imported, importing HistoricalDataManager...")
         from historical_data_manager import HistoricalDataManager
+        logger.info("📊 [BOOTSTRAP] HistoricalDataManager imported successfully")
         
         logger.info("📊 Fetching historical candles for immediate indicator calculation...")
         

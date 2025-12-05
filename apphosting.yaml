@@ -1,31 +1,13 @@
 run: npm run build
 staticDirectory: .next
 
-# Angel One Smart API integration
+# Angel One Smart API integration - NEW LOGIN (single Trading API)
 env:
-  # Trading API Credentials
+  # Trading API Credentials (NEW LOGIN - replaces old multi-API system)
   - variable: ANGELONE_TRADING_API_KEY
     secret: ANGELONE_TRADING_API_KEY
   - variable: ANGELONE_TRADING_API_SECRET
     secret: ANGELONE_TRADING_SECRET
-  
-  # Historical Data API Credentials
-  - variable: ANGELONE_HISTORICAL_API_KEY
-    secret: ANGELONE_HISTORICAL_API_KEY
-  - variable: ANGELONE_HISTORICAL_API_SECRET
-    secret: ANGELONE_HISTORICAL_SECRET
-  
-  # Market API Credentials
-  - variable: ANGELONE_MARKET_API_KEY
-    secret: ANGELONE_MARKET_API_KEY
-  - variable: ANGELONE_MARKET_API_SECRET
-    secret: ANGELONE_MARKET_SECRET
-  
-  # Publisher API Credentials
-  - variable: ANGELONE_PUBLISHER_API_KEY
-    secret: ANGELONE_PUBLISHER_API_KEY
-  - variable: ANGELONE_PUBLISHER_API_SECRET
-    secret: ANGELONE_PUBLISHER_SECRET
   
   # Account Credentials
   - variable: ANGELONE_CLIENT_CODE

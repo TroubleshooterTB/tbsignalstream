@@ -51,7 +51,7 @@
     "genkit": "^1.21.0",
     "lucide-react": "^0.475.0",
     "nanostores": "^1.0.1",
-    "next": "^15.0.0",
+    "next": "^15.5.7",
     "node-fetch": "^2.7.0",
     "patch-package": "^8.0.0",
     "react": "^18.3.1",

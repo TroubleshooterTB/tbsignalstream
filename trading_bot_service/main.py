@@ -37,9 +37,13 @@ if not firebase_admin._apps:
 db = firestore.client()
 
 # Load Angel One API key from environment (check multiple possible names)
-ANGEL_ONE_API_KEY = os.environ.get('ANGELONE_API_KEY', '') or os.environ.get('ANGEL_ONE_API_KEY', '')
+ANGEL_ONE_API_KEY = (
+    os.environ.get('ANGELONE_TRADING_API_KEY', '') or 
+    os.environ.get('ANGELONE_API_KEY', '') or 
+    os.environ.get('ANGEL_ONE_API_KEY', '')
+)
 if not ANGEL_ONE_API_KEY:
-    logger.warning("ANGELONE_API_KEY environment variable not set")
+    logger.warning("ANGELONE_TRADING_API_KEY environment variable not set")
 
 # Store active bot instances
 active_bots: Dict[str, 'TradingBotInstance'] = {}

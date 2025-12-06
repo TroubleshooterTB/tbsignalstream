@@ -148,13 +148,14 @@ def directAngelLogin(request: https_fn.Request) -> https_fn.Response:
                 print(f"Saving tokens to Firestore for user: {uid}")
                 user_doc_ref = db.collection('angel_one_credentials').document(uid)
                 user_doc_ref.set({
+                    'api_key': api_key,  # CRITICAL FIX: Include API key
                     'client_code': client_code,
                     'jwt_token': jwt_token,
                     'feed_token': feed_token,
                     'refresh_token': refresh_token,
                     'updated_at': firestore.SERVER_TIMESTAMP
                 }, merge=True)
-                print("Tokens saved successfully.")
+                print("Tokens and API key saved successfully.")
             except google_exceptions.GoogleAPICallError as e:
                 print(f"CRITICAL: Firestore error for user {uid}: {e}")
                 return https_fn.Response(json.dumps({"error": "Login succeeded, but failed to save credentials."}), status=500)

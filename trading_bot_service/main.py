@@ -317,6 +317,64 @@ def bot_status():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/market_data', methods=['POST'])
+def market_data():
+    """Get current market data for symbols"""
+    try:
+        # Verify Firebase ID token
+        auth_header = request.headers.get('Authorization', '')
+        if not auth_header.startswith('Bearer '):
+            return jsonify({'error': 'Missing or invalid authorization header'}), 401
+        
+        id_token = auth_header.split('Bearer ')[1]
+        
+        try:
+            decoded_token = auth.verify_id_token(id_token)
+            user_id = decoded_token['uid']
+        except Exception as e:
+            return jsonify({'error': 'Invalid authentication token'}), 401
+        
+        # Get request data
+        data = request.get_json()
+        exchange_tokens = data.get('exchangeTokens', [])
+        
+        if not exchange_tokens:
+            return jsonify({'error': 'Invalid request: exchangeTokens array required'}), 400
+        
+        # Check if bot is running for this user
+        if user_id not in active_bots:
+            return jsonify({'data': {}}), 200  # Return empty data if bot not running
+        
+        bot = active_bots[user_id]
+        
+        # Get latest data from bot's WebSocket manager
+        market_data_response = {}
+        
+        if hasattr(bot.bot_engine, 'websocket_manager') and bot.bot_engine.websocket_manager:
+            ws_manager = bot.bot_engine.websocket_manager
+            
+            for token in exchange_tokens:
+                # Get latest tick data for this token
+                if hasattr(ws_manager, 'latest_ticks') and token in ws_manager.latest_ticks:
+                    tick = ws_manager.latest_ticks[token]
+                    market_data_response[token] = {
+                        'ltp': tick.get('last_traded_price', 0),
+                        'open': tick.get('open_price_of_the_day', 0),
+                        'high': tick.get('high_price_of_the_day', 0),
+                        'low': tick.get('low_price_of_the_day', 0),
+                        'close': tick.get('close_price_of_the_day', 0),
+                        'volume': tick.get('volume_trade_for_the_day', 0),
+                        'change': tick.get('last_traded_price', 0) - tick.get('close_price_of_the_day', 0),
+                        'changePercent': ((tick.get('last_traded_price', 0) - tick.get('close_price_of_the_day', 0)) / tick.get('close_price_of_the_day', 1)) * 100 if tick.get('close_price_of_the_day', 0) > 0 else 0
+                    }
+        
+        return jsonify({'data': market_data_response}), 200
+    
+    except Exception as e:
+        logger.error(f"Error getting market data: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/test-analysis', methods=['POST'])
 def test_analysis():
     """

@@ -95,7 +95,7 @@ export const tradingBotApi = {
       throw new Error('User not authenticated');
     }
     
-    const TRADING_BOT_SERVICE_URL = 'https://trading-bot-service-818546654122.asia-south1.run.app';
+    const TRADING_BOT_SERVICE_URL = 'https://trading-bot-service-vmxfbt7qiq-el.a.run.app';
     const idToken = await user.getIdToken();
     
     const response = await fetch(`${TRADING_BOT_SERVICE_URL}/start`, {
@@ -121,7 +121,7 @@ export const tradingBotApi = {
       throw new Error('User not authenticated');
     }
     
-    const TRADING_BOT_SERVICE_URL = 'https://trading-bot-service-818546654122.asia-south1.run.app';
+    const TRADING_BOT_SERVICE_URL = 'https://trading-bot-service-vmxfbt7qiq-el.a.run.app';
     const idToken = await user.getIdToken();
     
     const response = await fetch(`${TRADING_BOT_SERVICE_URL}/stop`, {
@@ -151,7 +151,7 @@ export const tradingBotApi = {
       }
       
       // Call Cloud Run service directly for status
-      const TRADING_BOT_SERVICE_URL = 'https://trading-bot-service-818546654122.asia-south1.run.app';
+      const TRADING_BOT_SERVICE_URL = 'https://trading-bot-service-vmxfbt7qiq-el.a.run.app';
       const idToken = await user.getIdToken();
       
       const response = await fetch(`${TRADING_BOT_SERVICE_URL}/status`, {

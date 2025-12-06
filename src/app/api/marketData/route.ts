@@ -14,11 +14,11 @@ export async function POST(request: NextRequest) {
 
     // Get request body
     const body = await request.json();
-    const { symbols } = body;
+    const { mode, exchangeTokens } = body;
 
-    if (!symbols || !Array.isArray(symbols)) {
+    if (!exchangeTokens || typeof exchangeTokens !== 'object') {
       return NextResponse.json(
-        { error: 'Invalid request: symbols array required' },
+        { error: 'Invalid request: exchangeTokens object required' },
         { status: 400 }
       );
     }
@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
         'Content-Type': 'application/json',
         'Authorization': authHeader,
       },
-      body: JSON.stringify({ symbols }),
+      body: JSON.stringify({ mode, exchangeTokens }),
     });
 
     if (!response.ok) {

@@ -18,6 +18,7 @@ app = Flask(__name__)
 
 # Enable CORS for all routes
 CORS(app, origins=[
+    'https://studio--tbsignalstream.us-central1.hosted.app',  # App Hosting (PRIMARY)
     'https://tbsignalstream.web.app',
     'https://tbsignalstream.firebaseapp.com',
     'http://localhost:3000'

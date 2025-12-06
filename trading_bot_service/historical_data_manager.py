@@ -95,9 +95,13 @@ class HistoricalDataManager:
             response.raise_for_status()
             result = response.json()
             
-            if result.get('status') and result.get('data'):
+            # CRITICAL FIX: Angel One returns {"status": true, "message": "SUCCESS", "data": null}
+            # when no data is available (e.g., before market open). We need to check data is not null/empty.
+            data = result.get('data')
+            
+            if result.get('status') and data is not None and len(data) > 0:
                 # Convert to DataFrame
-                df = pd.DataFrame(result['data'])
+                df = pd.DataFrame(data)
                 df.columns = ['timestamp', 'open', 'high', 'low', 'close', 'volume']
                 df['timestamp'] = pd.to_datetime(df['timestamp'])
                 df.set_index('timestamp', inplace=True)
@@ -109,7 +113,9 @@ class HistoricalDataManager:
                 logger.info(f"Fetched {len(df)} candles for {symbol}")
                 return df
             else:
-                logger.error(f"Failed to fetch data: {result.get('message')}")
+                # Don't log as ERROR - this is EXPECTED before market open or for invalid date ranges
+                msg = result.get('message', 'No data available')
+                logger.debug(f"{symbol}: {msg} (data={data})")
                 return None
                 
         except Exception as e:

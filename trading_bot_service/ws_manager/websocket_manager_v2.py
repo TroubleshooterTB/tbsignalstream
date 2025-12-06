@@ -66,9 +66,19 @@ class AngelWebSocketV2Manager:
         self._heartbeat_thread: Optional[threading.Thread] = None
         self._stop_heartbeat = False
         
-        # Subscription tracking
+        # Subscription tracking (persist across reconnections)
         self.subscribed_tokens = set()
+        self.subscription_mode = self.MODE_LTP  # Default mode
+        self.subscription_payload = []  # Store last subscription for resubscribe
         self.tick_callbacks: List[Callable] = []
+        
+        # Reconnection management
+        self._auto_reconnect = True
+        self._reconnect_thread: Optional[threading.Thread] = None
+        self._reconnect_attempts = 0
+        self._max_reconnect_attempts = 10
+        self._base_reconnect_delay = 2  # Start with 2 seconds
+        self._stop_reconnect = False
         
     def connect(self) -> bool:
         """
@@ -158,6 +168,10 @@ class AngelWebSocketV2Manager:
             if not self.is_connected:
                 raise Exception("WebSocket not connected. Call connect() first.")
             
+            # Store subscription details for auto-resubscribe on reconnect
+            self.subscription_mode = mode
+            self.subscription_payload = tokens
+            
             # Generate correlation ID for tracking
             correlation_id = f"sub_{int(time.time() * 1000)}"
             
@@ -239,6 +253,10 @@ class AngelWebSocketV2Manager:
         """
         try:
             logger.info("Disconnecting WebSocket...")
+            
+            # Disable auto-reconnect
+            self._auto_reconnect = False
+            self._stop_reconnect = True
             
             # Stop heartbeat
             self._stop_heartbeat = True
@@ -336,12 +354,138 @@ class AngelWebSocketV2Manager:
     
     def _on_close(self, ws, close_status_code, close_msg):
         """Called when WebSocket connection closes."""
-        logger.info(
+        logger.warning(
             f"🔴 WebSocket closed (code: {close_status_code}, "
             f"message: {close_msg})"
         )
         self.is_connected = False
         self._stop_heartbeat = True
+        
+        # Trigger auto-reconnection if enabled
+        if self._auto_reconnect and not self._stop_reconnect:
+            logger.info("🔄 Connection lost - Initiating auto-reconnect...")
+            self._start_reconnect()
+    
+    # ========== Auto-Reconnection Logic ==========
+    
+    def _start_reconnect(self):
+        """Start reconnection thread with exponential backoff."""
+        if self._reconnect_thread and self._reconnect_thread.is_alive():
+            logger.debug("Reconnection already in progress")
+            return
+        
+        self._reconnect_thread = threading.Thread(
+            target=self._reconnect_loop,
+            daemon=True
+        )
+        self._reconnect_thread.start()
+    
+    def _reconnect_loop(self):
+        """Reconnect with exponential backoff."""
+        self._reconnect_attempts = 0
+        
+        while self._auto_reconnect and not self._stop_reconnect:
+            if self.is_connected:
+                logger.info("✅ Reconnection successful - Stopping reconnect loop")
+                self._reconnect_attempts = 0
+                break
+            
+            if self._reconnect_attempts >= self._max_reconnect_attempts:
+                logger.error(
+                    f"❌ Max reconnection attempts ({self._max_reconnect_attempts}) "
+                    f"reached. Giving up."
+                )
+                break
+            
+            self._reconnect_attempts += 1
+            
+            # Exponential backoff: 2s, 4s, 8s, 16s, 32s, max 60s
+            delay = min(
+                self._base_reconnect_delay * (2 ** (self._reconnect_attempts - 1)),
+                60
+            )
+            
+            logger.info(
+                f"🔄 Reconnect attempt {self._reconnect_attempts}/"
+                f"{self._max_reconnect_attempts} in {delay}s..."
+            )
+            
+            time.sleep(delay)
+            
+            try:
+                logger.info("🔄 Attempting to reconnect WebSocket...")
+                
+                # Close old connection if exists
+                if self.ws:
+                    try:
+                        self.ws.close()
+                    except:
+                        pass
+                
+                # Reset state
+                self.is_connected = False
+                self._stop_heartbeat = True
+                
+                # Reconnect
+                url = (
+                    f"{self.ws_url}?"
+                    f"clientCode={self.client_code}&"
+                    f"feedToken={self.feed_token}&"
+                    f"apiKey={self.api_key}"
+                )
+                
+                headers = {
+                    "Authorization": f"Bearer {self.jwt_token}",
+                    "x-api-key": self.api_key,
+                    "x-client-code": self.client_code,
+                    "x-feed-token": self.feed_token
+                }
+                
+                self.ws = websocket.WebSocketApp(
+                    url,
+                    header=headers,
+                    on_open=self._on_open,
+                    on_message=self._on_message,
+                    on_error=self._on_error,
+                    on_close=self._on_close
+                )
+                
+                # Run in background
+                self._ws_thread = threading.Thread(
+                    target=self.ws.run_forever,
+                    daemon=True
+                )
+                self._ws_thread.start()
+                
+                # Wait for connection
+                timeout = 10
+                start_time = time.time()
+                while not self.is_connected and (time.time() - start_time) < timeout:
+                    time.sleep(0.1)
+                
+                if self.is_connected:
+                    logger.info("✅ WebSocket reconnected successfully")
+                    
+                    # Resubscribe to previous subscriptions
+                    if self.subscription_payload:
+                        logger.info("🔄 Resubscribing to previous symbols...")
+                        time.sleep(1)  # Wait for connection to stabilize
+                        try:
+                            self.subscribe(self.subscription_mode, self.subscription_payload)
+                            logger.info("✅ Resubscription successful")
+                        except Exception as e:
+                            logger.error(f"❌ Resubscription failed: {e}")
+                    
+                    # Reset attempt counter
+                    self._reconnect_attempts = 0
+                    break
+                else:
+                    logger.warning(f"⚠️ Reconnection attempt {self._reconnect_attempts} failed (timeout)")
+                    
+            except Exception as e:
+                logger.error(f"❌ Reconnection attempt {self._reconnect_attempts} failed: {e}")
+        
+        logger.info("🔄 Reconnection loop ended")
     
     # ========== Binary Data Parsing ==========
     

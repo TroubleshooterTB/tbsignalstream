@@ -297,6 +297,11 @@ class RealtimeBotEngine:
     def _subscribe_to_symbols(self):
         """Subscribe to all symbols via WebSocket"""
         try:
+            # Skip if no symbols to subscribe
+            if not self.symbol_tokens:
+                logger.warning("⚠️  No symbols to subscribe - skipping WebSocket subscription")
+                return
+            
             # Group tokens by exchange
             exchange_tokens = defaultdict(list)
             

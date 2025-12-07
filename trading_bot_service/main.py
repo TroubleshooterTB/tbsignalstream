@@ -62,6 +62,7 @@ class TradingBotInstance:
         self.strategy = strategy
         self.is_running = False
         self.thread = None
+        self.engine = None  # Store engine reference for market data access
         
         logger.info(f"TradingBotInstance created for user {user_id} - Mode: {mode}, Strategy: {strategy}")
     
@@ -95,7 +96,7 @@ class TradingBotInstance:
             from realtime_bot_engine import RealtimeBotEngine
             
             # Initialize real-time bot engine with WebSocket
-            engine = RealtimeBotEngine(
+            self.engine = RealtimeBotEngine(
                 user_id=self.user_id,
                 credentials=self.credentials,
                 symbols=self.symbols,
@@ -104,7 +105,7 @@ class TradingBotInstance:
             )
             
             # Run the bot (WebSocket-powered real-time execution)
-            engine.start(running_flag=lambda: self.is_running)
+            self.engine.start(running_flag=lambda: self.is_running)
             
         except Exception as e:
             logger.error(f"Bot error for user {self.user_id}: {e}", exc_info=True)
@@ -350,8 +351,8 @@ def market_data():
         # Get latest data from bot's WebSocket manager
         market_data_response = {}
         
-        if hasattr(bot.bot_engine, 'websocket_manager') and bot.bot_engine.websocket_manager:
-            ws_manager = bot.bot_engine.websocket_manager
+        if hasattr(bot, 'engine') and bot.engine and hasattr(bot.engine, 'websocket_manager') and bot.engine.websocket_manager:
+            ws_manager = bot.engine.websocket_manager
             
             for token in exchange_tokens:
                 # Get latest tick data for this token

@@ -40,6 +40,13 @@ export function PositionsMonitor() {
 
   useEffect(() => {
     loadPositions();
+    
+    // Auto-refresh every 3 seconds for real-time P&L updates
+    const interval = setInterval(() => {
+      loadPositions();
+    }, 3000);
+    
+    return () => clearInterval(interval);
   }, []);
 
   const totalPnl = positions.reduce((sum, pos) => sum + pos.pnl, 0);

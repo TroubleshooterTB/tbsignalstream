@@ -56,10 +56,16 @@ class HistoricalDataManager:
         exchange: str,
         interval: str,
         from_date: datetime,
-        to_date: datetime
+        to_date: datetime,
+        max_retries: int = 3
     ) -> Optional[pd.DataFrame]:
         """
-        Fetch historical candle data from Angel One.
+        Fetch historical candle data from Angel One with retry logic.
+        
+        Angel One Rate Limits (per client_code):
+        - 3 requests/second
+        - 180 requests/minute
+        - 5000 requests/day
         
         Args:
             symbol: Trading symbol
@@ -68,59 +74,83 @@ class HistoricalDataManager:
             interval: Timeframe (ONE_MINUTE, FIVE_MINUTE, ONE_DAY, etc.)
             from_date: Start date
             to_date: End date
+            max_retries: Maximum retry attempts for rate limit errors (default: 3)
             
         Returns:
             DataFrame with OHLCV data or None
         """
-        try:
-            url = f"{self.base_url}/rest/secure/angelbroking/historical/v1/getCandleData"
-            
-            payload = {
-                "exchange": exchange,
-                "symboltoken": str(token),
-                "interval": interval,
-                "fromdate": from_date.strftime("%Y-%m-%d %H:%M"),
-                "todate": to_date.strftime("%Y-%m-%d %H:%M")
-            }
-            
-            logger.info(f"Fetching historical data for {symbol} ({interval})")
-            
-            response = requests.post(
-                url,
-                headers=self._get_headers(),
-                json=payload,
-                timeout=30
-            )
-            
-            response.raise_for_status()
-            result = response.json()
-            
-            # CRITICAL FIX: Angel One returns {"status": true, "message": "SUCCESS", "data": null}
-            # when no data is available (e.g., before market open). We need to check data is not null/empty.
-            data = result.get('data')
-            
-            if result.get('status') and data is not None and len(data) > 0:
-                # Convert to DataFrame
-                df = pd.DataFrame(data)
-                df.columns = ['timestamp', 'open', 'high', 'low', 'close', 'volume']
-                df['timestamp'] = pd.to_datetime(df['timestamp'])
-                df.set_index('timestamp', inplace=True)
+        import time
+        
+        url = f"{self.base_url}/rest/secure/angelbroking/historical/v1/getCandleData"
+        
+        payload = {
+            "exchange": exchange,
+            "symboltoken": str(token),
+            "interval": interval,
+            "fromdate": from_date.strftime("%Y-%m-%d %H:%M"),
+            "todate": to_date.strftime("%Y-%m-%d %H:%M")
+        }
+        
+        logger.info(f"Fetching historical data for {symbol} ({interval})")
+        
+        # Retry loop for rate limiting (403 errors)
+        for attempt in range(max_retries):
+            try:
+                response = requests.post(
+                    url,
+                    headers=self._get_headers(),
+                    json=payload,
+                    timeout=30
+                )
                 
-                # Convert to numeric
-                for col in ['open', 'high', 'low', 'close', 'volume']:
-                    df[col] = pd.to_numeric(df[col])
+                # Check for rate limit (403) - retry with exponential backoff
+                if response.status_code == 403:
+                    if attempt < max_retries - 1:
+                        # Exponential backoff: 1s, 2s, 4s
+                        wait_time = 2 ** attempt
+                        logger.warning(f"{symbol}: Rate limit hit (403), retrying in {wait_time}s (attempt {attempt + 1}/{max_retries})")
+                        time.sleep(wait_time)
+                        continue
+                    else:
+                        logger.error(f"{symbol}: Rate limit exceeded after {max_retries} attempts")
+                        return None
                 
-                logger.info(f"Fetched {len(df)} candles for {symbol}")
-                return df
-            else:
-                # Don't log as ERROR - this is EXPECTED before market open or for invalid date ranges
-                msg = result.get('message', 'No data available')
-                logger.debug(f"{symbol}: {msg} (data={data})")
+                response.raise_for_status()
+                result = response.json()
+                
+                # CRITICAL FIX: Angel One returns {"status": true, "message": "SUCCESS", "data": null}
+                # when no data is available (e.g., before market open). We need to check data is not null/empty.
+                data = result.get('data')
+                
+                if result.get('status') and data is not None and len(data) > 0:
+                    # Convert to DataFrame
+                    df = pd.DataFrame(data)
+                    df.columns = ['timestamp', 'open', 'high', 'low', 'close', 'volume']
+                    df['timestamp'] = pd.to_datetime(df['timestamp'])
+                    df.set_index('timestamp', inplace=True)
+                    
+                    # Convert to numeric
+                    for col in ['open', 'high', 'low', 'close', 'volume']:
+                        df[col] = pd.to_numeric(df[col])
+                    
+                    logger.info(f"✅ Fetched {len(df)} candles for {symbol}")
+                    return df
+                else:
+                    # Don't log as ERROR - this is EXPECTED before market open or for invalid date ranges
+                    msg = result.get('message', 'No data available')
+                    logger.debug(f"{symbol}: {msg} (data={data})")
+                    return None
+                    
+            except requests.exceptions.HTTPError as e:
+                # HTTP errors other than 403 (already handled above)
+                logger.error(f"{symbol}: HTTP error: {e}")
                 return None
-                
-        except Exception as e:
-            logger.error(f"Error fetching historical data: {e}")
-            return None
+            except Exception as e:
+                logger.error(f"{symbol}: Error fetching historical data: {e}")
+                return None
+        
+        # Should not reach here, but return None if we do
+        return None
     
     def store_to_firestore(
         self,

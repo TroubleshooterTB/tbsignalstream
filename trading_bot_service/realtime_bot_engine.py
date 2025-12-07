@@ -721,21 +721,26 @@ class RealtimeBotEngine:
         success_count = 0
         fail_count = 0
         
-        for symbol in self.symbols:
+        # CRITICAL: Angel One rate limits - 3 requests/second, 180/minute
+        # We use 0.4 seconds between requests = 2.5 requests/second (safe margin)
+        RATE_LIMIT_DELAY = 0.4  # seconds between requests
+        
+        for idx, symbol in enumerate(self.symbols, 1):
             try:
                 token_info = self.symbol_tokens.get(symbol)
                 if not token_info:
-                    logger.debug(f"⏭️  {symbol}: No token info, skipping")
+                    logger.debug(f"⏭️  [{idx}/{len(self.symbols)}] {symbol}: No token info, skipping")
                     continue
                 
-                # Fetch 1-minute candles
+                # Fetch 1-minute candles (with built-in retry logic for 403 errors)
                 df = hist_manager.fetch_historical_data(
                     symbol=symbol,
                     token=token_info['token'],
                     exchange=token_info['exchange'],
                     interval='ONE_MINUTE',
                     from_date=from_date,
-                    to_date=to_date
+                    to_date=to_date,
+                    max_retries=3  # Retry up to 3 times for rate limit errors
                 )
                 
                 if df is not None and len(df) > 0:
@@ -748,18 +753,21 @@ class RealtimeBotEngine:
                         self.candle_data[symbol] = df
                     
                     success_count += 1
-                    logger.info(f"✅ {symbol}: Loaded {len(df)} historical candles")
-                    
-                    # Rate limiting: Angel One has strict limits
-                    time.sleep(0.5)  # 2 requests per second max
+                    logger.info(f"✅ [{idx}/{len(self.symbols)}] {symbol}: Loaded {len(df)} historical candles")
                 else:
                     fail_count += 1
-                    logger.debug(f"⏭️  {symbol}: No historical data returned (may be before market open)")
+                    logger.debug(f"⏭️  [{idx}/{len(self.symbols)}] {symbol}: No historical data returned")
                     
             except Exception as e:
                 fail_count += 1
-                logger.debug(f"⏭️  {symbol}: Historical fetch failed: {e} (EXPECTED if before market open)")
+                logger.debug(f"⏭️  [{idx}/{len(self.symbols)}] {symbol}: Historical fetch failed: {e}")
                 # Continue with other symbols even if one fails
+            
+            finally:
+                # CRITICAL: ALWAYS rate limit between requests, regardless of success/failure
+                # This prevents cascading 403 errors when one request fails
+                if idx < len(self.symbols):  # Don't sleep after last symbol
+                    time.sleep(RATE_LIMIT_DELAY)
         
         if success_count == 0 and now < market_open_time:
             logger.warning("📊 No historical data available - Bot started before market open")

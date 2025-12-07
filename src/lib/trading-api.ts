@@ -76,9 +76,67 @@ export const orderApi = {
   
   cancel: (orderId: string) => callCloudFunction('cancelOrder', { orderId }),
   
-  getBook: () => callCloudFunction('getOrderBook'),
+  getBook: async () => {
+    // Get orders from trading bot service
+    const user = auth.currentUser;
+    if (!user) {
+      return { orders: [] };
+    }
+    
+    const TRADING_BOT_SERVICE_URL = 'https://trading-bot-service-vmxfbt7qiq-el.a.run.app';
+    const idToken = await user.getIdToken();
+    
+    try {
+      const response = await fetch(`${TRADING_BOT_SERVICE_URL}/orders`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${idToken}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (!response.ok) {
+        console.error('Failed to fetch orders:', await response.text());
+        return { orders: [] };
+      }
+      
+      return response.json();
+    } catch (error) {
+      console.error('Error fetching orders:', error);
+      return { orders: [] };
+    }
+  },
   
-  getPositions: () => callCloudFunction('getPositions'),
+  getPositions: async () => {
+    // Get positions from trading bot service
+    const user = auth.currentUser;
+    if (!user) {
+      return { positions: [] };
+    }
+    
+    const TRADING_BOT_SERVICE_URL = 'https://trading-bot-service-vmxfbt7qiq-el.a.run.app';
+    const idToken = await user.getIdToken();
+    
+    try {
+      const response = await fetch(`${TRADING_BOT_SERVICE_URL}/positions`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${idToken}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (!response.ok) {
+        console.error('Failed to fetch positions:', await response.text());
+        return { positions: [] };
+      }
+      
+      return response.json();
+    } catch (error) {
+      console.error('Error fetching positions:', error);
+      return { positions: [] };
+    }
+  },
 };
 
 // Trading Bot Functions
@@ -182,4 +240,37 @@ export const tradingBotApi = {
 export const marketDataApi = {
   get: (symbols: string[], interval: string = '5min') => 
     callCloudFunction('getMarketData', { symbols, interval }),
+};
+
+// Signals API
+export const signalsApi = {
+  getRecent: async () => {
+    const user = auth.currentUser;
+    if (!user) {
+      return { signals: [] };
+    }
+    
+    const TRADING_BOT_SERVICE_URL = 'https://trading-bot-service-vmxfbt7qiq-el.a.run.app';
+    const idToken = await user.getIdToken();
+    
+    try {
+      const response = await fetch(`${TRADING_BOT_SERVICE_URL}/signals`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${idToken}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (!response.ok) {
+        console.error('Failed to fetch signals:', await response.text());
+        return { signals: [] };
+      }
+      
+      return response.json();
+    } catch (error) {
+      console.error('Error fetching signals:', error);
+      return { signals: [] };
+    }
+  },
 };

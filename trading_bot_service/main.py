@@ -428,6 +428,161 @@ def test_analysis():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/positions', methods=['GET'])
+def get_positions():
+    """Get all open positions from the trading bot"""
+    try:
+        # Verify Firebase ID token
+        auth_header = request.headers.get('Authorization', '')
+        if not auth_header.startswith('Bearer '):
+            return jsonify({'error': 'Missing or invalid authorization header'}), 401
+        
+        id_token = auth_header.split('Bearer ')[1]
+        
+        try:
+            decoded_token = auth.verify_id_token(id_token)
+            user_id = decoded_token['uid']
+        except Exception as e:
+            return jsonify({'error': 'Invalid authentication token'}), 401
+        
+        # Check if bot is running for this user
+        if user_id not in active_bots:
+            return jsonify({'positions': []}), 200  # Return empty if bot not running
+        
+        bot = active_bots[user_id]
+        
+        # Get positions from bot's engine
+        positions_list = []
+        
+        if hasattr(bot, 'engine') and bot.engine and hasattr(bot.engine, '_position_manager'):
+            position_manager = bot.engine._position_manager
+            
+            if hasattr(position_manager, 'get_all_positions'):
+                positions_dict = position_manager.get_all_positions()
+                
+                # Get latest prices for P&L calculation
+                latest_prices = {}
+                if hasattr(bot.engine, 'latest_prices'):
+                    with bot.engine._lock:
+                        latest_prices = bot.engine.latest_prices.copy()
+                
+                # Convert positions dict to list format for frontend
+                for symbol, position in positions_dict.items():
+                    entry_price = position.get('entry_price', 0)
+                    quantity = position.get('quantity', 0)
+                    current_price = latest_prices.get(symbol, entry_price)
+                    
+                    # Calculate P&L
+                    pnl_rupees = (current_price - entry_price) * quantity
+                    pnl_percent = ((current_price - entry_price) / entry_price * 100) if entry_price > 0 else 0
+                    
+                    positions_list.append({
+                        'symbol': symbol,
+                        'quantity': quantity,
+                        'averagePrice': entry_price,
+                        'currentPrice': current_price,
+                        'pnl': pnl_rupees,
+                        'pnlPercent': pnl_percent,
+                        'stopLoss': position.get('stop_loss', 0),
+                        'target': position.get('target', 0),
+                        'orderId': position.get('order_id', ''),
+                        'timestamp': position.get('timestamp', '').isoformat() if hasattr(position.get('timestamp', ''), 'isoformat') else str(position.get('timestamp', ''))
+                    })
+        
+        return jsonify({'positions': positions_list}), 200
+    
+    except Exception as e:
+        logger.error(f"Error getting positions: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/orders', methods=['GET'])
+def get_orders():
+    """Get order history (both executed and pending)"""
+    try:
+        # Verify Firebase ID token
+        auth_header = request.headers.get('Authorization', '')
+        if not auth_header.startswith('Bearer '):
+            return jsonify({'error': 'Missing or invalid authorization header'}), 401
+        
+        id_token = auth_header.split('Bearer ')[1]
+        
+        try:
+            decoded_token = auth.verify_id_token(id_token)
+            user_id = decoded_token['uid']
+        except Exception as e:
+            return jsonify({'error': 'Invalid authentication token'}), 401
+        
+        # Fetch orders from Firestore (logged by bot)
+        orders_ref = db.collection('order_history').where('user_id', '==', user_id).order_by('timestamp', direction=firestore.Query.DESCENDING).limit(50)
+        docs = orders_ref.stream()
+        
+        orders_list = []
+        for doc in docs:
+            order_data = doc.to_dict()
+            orders_list.append({
+                'orderId': doc.id,
+                'symbol': order_data.get('symbol', ''),
+                'quantity': order_data.get('quantity', 0),
+                'price': order_data.get('price', 0),
+                'orderType': order_data.get('order_type', 'MARKET'),
+                'transactionType': order_data.get('transaction_type', 'BUY'),
+                'status': order_data.get('status', 'unknown'),
+                'timestamp': order_data.get('timestamp', '').isoformat() if hasattr(order_data.get('timestamp', ''), 'isoformat') else str(order_data.get('timestamp', ''))
+            })
+        
+        return jsonify({'orders': orders_list}), 200
+    
+    except Exception as e:
+        logger.error(f"Error getting orders: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/signals', methods=['GET'])
+def get_signals():
+    """Get recent trading signals generated by bot"""
+    try:
+        # Verify Firebase ID token
+        auth_header = request.headers.get('Authorization', '')
+        if not auth_header.startswith('Bearer '):
+            return jsonify({'error': 'Missing or invalid authorization header'}), 401
+        
+        id_token = auth_header.split('Bearer ')[1]
+        
+        try:
+            decoded_token = auth.verify_id_token(id_token)
+            user_id = decoded_token['uid']
+        except Exception as e:
+            return jsonify({'error': 'Invalid authentication token'}), 401
+        
+        # Fetch recent signals from Firestore
+        signals_ref = db.collection('trading_signals').where('user_id', '==', user_id).order_by('timestamp', direction=firestore.Query.DESCENDING).limit(20)
+        docs = signals_ref.stream()
+        
+        signals_list = []
+        for doc in docs:
+            signal_data = doc.to_dict()
+            signals_list.append({
+                'id': doc.id,
+                'symbol': signal_data.get('symbol', ''),
+                'type': signal_data.get('type', 'BUY'),
+                'price': signal_data.get('price', 0),
+                'confidence': signal_data.get('confidence', 0),
+                'signal_type': signal_data.get('signal_type', 'Breakout'),
+                'rationale': signal_data.get('rationale', ''),
+                'stop_loss': signal_data.get('stop_loss', 0),
+                'target': signal_data.get('target', 0),
+                'status': signal_data.get('status', 'open'),
+                'timestamp': signal_data.get('timestamp', '').isoformat() if hasattr(signal_data.get('timestamp', ''), 'isoformat') else str(signal_data.get('timestamp', ''))
+            })
+        
+        return jsonify({'signals': signals_list}), 200
+    
+    except Exception as e:
+        logger.error(f"Error getting signals: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/clear-old-signals', methods=['POST'])
 def clear_old_signals():
     """Close all old/stale trading signals"""

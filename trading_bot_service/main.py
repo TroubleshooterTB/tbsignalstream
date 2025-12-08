@@ -377,7 +377,7 @@ def market_data():
 
 
 @app.route('/health-check', methods=['GET'])
-def health_check():
+def bot_health_check():
     """Comprehensive bot health check"""
     try:
         # Verify Firebase ID token

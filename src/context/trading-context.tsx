@@ -138,14 +138,8 @@ export function TradingProvider({ children }: { children: React.ReactNode }) {
   
   // Trading bot methods
   const startTradingBot = useCallback(async () => {
-    // Check if already running before making API call
-    if (isBotRunning) {
-      toast({
-        title: 'Bot Already Running',
-        description: 'Trading bot is already active',
-      });
-      return;
-    }
+    // REMOVED: Don't check state before calling backend - let backend decide
+    // Always attempt to start, backend will return error if already running
     
     setIsBotLoading(true);
     try {
@@ -168,11 +162,48 @@ export function TradingProvider({ children }: { children: React.ReactNode }) {
         positionSize: parseFloat(botConfig.positionSize),
       });
       
-      setIsBotRunning(true);
+      // Show starting message
       toast({
-        title: 'Trading Bot Started',
-        description: `Bot is now ${botConfig.mode === 'paper' ? 'paper trading' : 'live trading'} with ${symbols.length} symbols`,
+        title: 'Bot Starting...',
+        description: 'Initializing WebSocket and loading data. Please wait 20 seconds...',
       });
+      
+      // Wait for bot to initialize
+      await new Promise(resolve => setTimeout(resolve, 20000));
+      
+      // Check health after initialization
+      try {
+        const health = await tradingBotApi.healthCheck();
+        
+        if (health.overall_status === 'healthy') {
+          setIsBotRunning(true);
+          toast({
+            title: 'Bot Started Successfully',
+            description: `Trading with ${health.num_symbols} symbols. WebSocket connected.`,
+          });
+        } else if (health.overall_status === 'degraded') {
+          setIsBotRunning(true);
+          toast({
+            title: '⚠️ Bot Started with Warnings',
+            description: health.warnings?.join(', ') || 'Some systems may not be fully operational',
+          });
+        } else {
+          setIsBotRunning(true);
+          toast({
+            title: '❌ Bot Started but Has Errors',
+            description: health.errors?.join(', ') || 'Critical systems not working',
+            variant: 'destructive',
+          });
+        }
+      } catch (healthError) {
+        console.error('[TradingContext] Health check failed:', healthError);
+        // Bot started but couldn't verify health
+        setIsBotRunning(true);
+        toast({
+          title: 'Bot Started',
+          description: `Bot is now ${botConfig.mode === 'paper' ? 'paper trading' : 'live trading'} with ${symbols.length} symbols`,
+        });
+      }
     } catch (error: any) {
       // Check if bot is already running
       if (error.message?.includes('already running') || error.message?.includes('400')) {
@@ -193,7 +224,7 @@ export function TradingProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setIsBotLoading(false);
     }
-  }, [botConfig, toast, isBotRunning, refreshBotStatus]);
+  }, [botConfig, toast, refreshBotStatus]);
   
   const stopTradingBot = useCallback(async () => {
     setIsBotLoading(true);

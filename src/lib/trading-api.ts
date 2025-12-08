@@ -234,6 +234,31 @@ export const tradingBotApi = {
       return { running: false, status: 'stopped' };
     }
   },
+  
+  healthCheck: async () => {
+    const user = auth.currentUser;
+    if (!user) {
+      throw new Error('User not authenticated');
+    }
+    
+    const TRADING_BOT_SERVICE_URL = 'https://trading-bot-service-vmxfbt7qiq-el.a.run.app';
+    const idToken = await user.getIdToken();
+    
+    const response = await fetch(`${TRADING_BOT_SERVICE_URL}/health-check`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${idToken}`,
+        'Content-Type': 'application/json',
+      },
+    });
+    
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: 'Health check failed' }));
+      throw new Error(error.error || 'Health check failed');
+    }
+    
+    return response.json();
+  },
 };
 
 // Market Data Function

@@ -37,10 +37,14 @@ export async function POST(request: NextRequest) {
     });
 
     if (!response.ok) {
-      const error = await response.json();
+      // Return empty data instead of error when bot not running
       return NextResponse.json(
-        { error: error.error || 'Failed to fetch market data' },
-        { status: response.status }
+        { 
+          status: false,
+          message: 'Market data unavailable',
+          data: { fetched: [] }
+        },
+        { status: 200 }
       );
     }
 
@@ -48,10 +52,15 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(data);
 
   } catch (error) {
-    console.error('Market data API error:', error);
+    // Silently handle errors when bot is not running or market is closed
+    // This prevents console spam for expected failures
     return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
+      { 
+        status: false,
+        message: 'Market data unavailable',
+        data: { fetched: [] }
+      },
+      { status: 200 }
     );
   }
 }

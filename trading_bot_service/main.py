@@ -376,6 +376,82 @@ def market_data():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/health-check', methods=['GET'])
+def health_check():
+    """Comprehensive bot health check"""
+    try:
+        # Verify Firebase ID token
+        auth_header = request.headers.get('Authorization', '')
+        if not auth_header.startswith('Bearer '):
+            return jsonify({'error': 'Missing or invalid authorization header'}), 401
+        
+        id_token = auth_header.split('Bearer ')[1]
+        
+        try:
+            decoded_token = auth.verify_id_token(id_token)
+            user_id = decoded_token['uid']
+        except Exception as e:
+            return jsonify({'error': 'Invalid authentication token'}), 401
+        
+        # Check if bot exists
+        if user_id not in active_bots:
+            return jsonify({
+                'status': 'not_running',
+                'running': False
+            }), 200
+        
+        bot = active_bots[user_id]
+        
+        # Gather health metrics
+        health = {
+            'running': bot.is_running,
+            'has_engine': bot.engine is not None,
+            'websocket_connected': False,
+            'num_prices': 0,
+            'num_candles': 0,
+            'num_symbols': 0,
+            'warnings': [],
+            'errors': []
+        }
+        
+        if bot.engine:
+            # WebSocket check
+            if hasattr(bot.engine, 'ws_manager') and bot.engine.ws_manager:
+                health['websocket_connected'] = getattr(bot.engine.ws_manager, 'is_connected', False)
+            
+            # Data checks
+            if hasattr(bot.engine, 'latest_prices'):
+                health['num_prices'] = len(bot.engine.latest_prices)
+            if hasattr(bot.engine, 'candle_data'):
+                health['num_candles'] = len(bot.engine.candle_data)
+            if hasattr(bot.engine, 'symbol_tokens'):
+                health['num_symbols'] = len(bot.engine.symbol_tokens)
+        
+        # Determine overall status
+        if not health['websocket_connected']:
+            health['errors'].append('WebSocket not connected - no real-time data')
+        if health['num_prices'] == 0:
+            health['errors'].append('No price data available')
+        if health['num_candles'] == 0:
+            health['errors'].append('No historical candle data')
+        elif health['num_candles'] < health['num_symbols'] * 0.5:
+            health['warnings'].append(f'Only {health["num_candles"]}/{health["num_symbols"]} symbols have data')
+        
+        # Overall status
+        if health['errors']:
+            health['overall_status'] = 'error'
+        elif health['warnings']:
+            health['overall_status'] = 'degraded'
+        else:
+            health['overall_status'] = 'healthy'
+        
+        return jsonify(health), 200
+        
+    except Exception as e:
+        logger.error(f"Health check error: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/test-analysis', methods=['POST'])
 def test_analysis():
     """

@@ -150,6 +150,10 @@ class RealtimeBotEngine:
                 logger.warning("⚠️  Position monitoring will NOT work without WebSocket")
                 self.ws_manager = None  # Bot will run without WebSocket
             
+            # CRITICAL: Fail fast if WebSocket didn't connect in live mode
+            if self.mode == 'live' and (not self.ws_manager or not hasattr(self.ws_manager, 'is_connected') or not getattr(self.ws_manager, 'is_connected', False)):
+                raise Exception("CRITICAL: WebSocket connection failed - cannot trade live without real-time data")
+            
             # Step 4: Bootstrap historical candle data (CRITICAL FIX)
             # Without this, bot needs 200 minutes to accumulate candles for indicators!
             logger.info("📊 [CRITICAL] Bootstrapping historical candle data...")
@@ -163,6 +167,9 @@ class RealtimeBotEngine:
                 logger.error(f"❌ [CRITICAL] Error type: {type(e).__name__}")
                 logger.error(f"❌ [CRITICAL] Error details: {str(e)}")
                 logger.warning("⚠️  Bot will need 200+ minutes to build candles from ticks")
+                # Fail fast if bootstrap completely failed
+                if len(self.candle_data) == 0:
+                    raise Exception("CRITICAL: Bootstrap failed - cannot analyze without historical candles")
             
             # Step 5: Subscribe to symbols (only if WebSocket is active)
             if self.ws_manager:
@@ -189,7 +196,15 @@ class RealtimeBotEngine:
             )
             self._candle_builder_thread.start()
             
-            # Step 8: Main strategy execution loop (runs every 5 seconds)
+            # Step 8: Final verification before trading
+            logger.info("🔍 Running final pre-trade verification...")
+            try:
+                self._verify_ready_to_trade()
+            except Exception as e:
+                logger.error(f"❌ Pre-trade verification failed: {e}")
+                raise
+            
+            # Step 9: Main strategy execution loop (runs every 5 seconds)
             logger.info("🚀 Real-time trading bot started successfully!")
             logger.info("Position monitoring: Every 0.5 seconds")
             logger.info("Strategy analysis: Every 5 seconds")
@@ -782,6 +797,29 @@ class RealtimeBotEngine:
             logger.warning(f"⚠️ Historical data bootstrap: 0 success, {fail_count} failed")
             logger.warning("⚠️ Bot will build candles from live ticks (may take 50+ minutes for patterns)")
             logger.info("✅ [CRITICAL] Historical candles loaded - bot ready to trade immediately!")
+    
+    def _verify_ready_to_trade(self):
+        """Final verification before entering trading loop"""
+        checks = {
+            'websocket_connected': self.ws_manager and hasattr(self.ws_manager, 'is_connected') and getattr(self.ws_manager, 'is_connected', False),
+            'has_prices': len(self.latest_prices) > 0,
+            'has_candles': len(self.candle_data) >= len(self.symbol_tokens) * 0.8,  # At least 80% of symbols
+            'has_tokens': len(self.symbol_tokens) > 0,
+        }
+        
+        logger.info("🔍 PRE-TRADE VERIFICATION:")
+        for check, status in checks.items():
+            icon = "✅" if status else "❌"
+            logger.info(f"  {icon} {check}: {status}")
+        
+        if not all(checks.values()):
+            failed = [k for k, v in checks.items() if not v]
+            error_msg = f"Bot not ready to trade. Failed checks: {', '.join(failed)}"
+            logger.error(f"❌ {error_msg}")
+            raise Exception(error_msg)
+        
+        logger.info("✅ ALL CHECKS PASSED - Bot ready to trade!")
+        return True
     
     def _load_bot_config(self) -> Dict:
         """Load bot configuration from Firestore including portfolio value"""

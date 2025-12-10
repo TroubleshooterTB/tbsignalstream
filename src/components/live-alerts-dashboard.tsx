@@ -28,6 +28,9 @@ import { OrderManager } from "@/components/order-manager";
 import { TradingBotControls } from "@/components/trading-bot-controls";
 import { PositionsMonitor } from "@/components/positions-monitor";
 import { OrderBook } from "@/components/order-book";
+import { MarketHeatmap } from "@/components/market-heatmap";
+import { BotPerformanceStats } from "@/components/bot-performance-stats";
+import { PatternBadge } from "@/components/pattern-education";
 import { db } from "@/lib/firebase";
 import { onSnapshot, collection, query, where, orderBy, limit } from "firebase/firestore";
 
@@ -66,6 +69,7 @@ export function LiveAlertsDashboard() {
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [openPositions, setOpenPositions] = useState<Map<string, OpenPosition>>(new Map());
   const [livePrices, setLivePrices] = useState<Map<string, number>>(new Map());
+  const [previousPrices, setPreviousPrices] = useState<Map<string, number>>(new Map());
   const [isLoadingPrices, setIsLoadingPrices] = useState(true);
   const [isMounted, setIsMounted] = useState(false);
   const { toast } = useToast();
@@ -112,6 +116,12 @@ export function LiveAlertsDashboard() {
         console.log('[Dashboard] Fetching live prices from Angel One...');
         const prices = await fetchPopularStocksLTP();
         console.log('[Dashboard] Received live prices:', Object.fromEntries(prices));
+        
+        // Store previous prices for heatmap change calculation
+        if (livePrices.size > 0) {
+          setPreviousPrices(new Map(livePrices));
+        }
+        
         setLivePrices(prices);
         setIsLoadingPrices(false);
       } catch (error) {
@@ -366,6 +376,12 @@ export function LiveAlertsDashboard() {
         <TradingBotControls />
       </div>
       
+      {/* Market Overview - NEW: Heatmap and Performance */}
+      <div className="space-y-4">
+        <MarketHeatmap prices={livePrices} previousPrices={previousPrices} />
+        <BotPerformanceStats />
+      </div>
+      
       {/* Unified Dashboard - All Sections Always Visible */}
       <div className="space-y-4">
         {/* Trading Controls */}
@@ -431,9 +447,10 @@ export function LiveAlertsDashboard() {
                           </Badge>
                         </TableCell>
                         <TableCell>
-                          <Badge variant={getBadgeVariant(alert.signal_type)}
-                            className={alert.signal_type === "Profit Target" ? "bg-green-600/20 text-green-800 border-green-600/30" : ""}
-                          >{alert.signal_type}</Badge>
+                          <PatternBadge 
+                            pattern={alert.signal_type}
+                            variant={getBadgeVariant(alert.signal_type)}
+                          />
                         </TableCell>
                         <TableCell>{alert.price.toFixed(2)}</TableCell>
                         <TableCell>

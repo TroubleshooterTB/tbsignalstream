@@ -128,21 +128,7 @@ class RealtimeBotEngine:
                 logger.info("🔌 [DEBUG] About to call _initialize_websocket()...")
                 self._initialize_websocket()
                 logger.info("✅ [DEBUG] WebSocket initialized and connected")
-                
-                # CRITICAL: Verify WebSocket is actually receiving data
-                logger.info("⏳ [VERIFY] Waiting 10 seconds for first ticks to verify data flow...")
-                time.sleep(10)
-                logger.info("✅ [VERIFY] 10-second wait complete, checking for price data...")
-                
-                with self._lock:
-                    num_symbols_with_prices = len(self.latest_prices)
-                
-                if num_symbols_with_prices > 0:
-                    logger.info(f"✅ [VERIFY] WebSocket receiving data: {num_symbols_with_prices} symbols have prices")
-                else:
-                    logger.error("❌ [VERIFY] WebSocket NOT receiving data - no price updates after 10 seconds")
-                    logger.error("❌ Position monitoring will FAIL without price data")
-                    logger.error("❌ RECOMMENDATION: Use paper mode only or fix WebSocket connection")
+                # NOTE: We'll verify data flow AFTER subscribing to symbols (Step 5)
                     
             except Exception as e:
                 logger.error(f"❌ [DEBUG] WebSocket initialization failed: {e}", exc_info=True)
@@ -151,7 +137,7 @@ class RealtimeBotEngine:
                 self.ws_manager = None  # Bot will run without WebSocket
             
             # CRITICAL: Fail fast if WebSocket didn't connect in live mode
-            if self.mode == 'live' and (not self.ws_manager or not hasattr(self.ws_manager, 'is_connected') or not getattr(self.ws_manager, 'is_connected', False)):
+            if self.trading_mode == 'live' and (not self.ws_manager or not hasattr(self.ws_manager, 'is_connected') or not getattr(self.ws_manager, 'is_connected', False)):
                 raise Exception("CRITICAL: WebSocket connection failed - cannot trade live without real-time data")
             
             # Step 4: Bootstrap historical candle data (CRITICAL FIX)
@@ -176,6 +162,15 @@ class RealtimeBotEngine:
                 try:
                     self._subscribe_to_symbols()
                     logger.info("✅ Subscribed to symbols")
+                    
+                    # CRITICAL: Wait 3 seconds for price data to start flowing after subscription
+                    logger.info("⏳ Waiting 3 seconds for WebSocket price data to arrive...")
+                    time.sleep(3)
+                    
+                    with self._lock:
+                        num_prices = len(self.latest_prices)
+                    logger.info(f"✅ After subscription wait: {num_prices} symbols have prices")
+                    
                 except Exception as e:
                     logger.error(f"Symbol subscription failed: {e}")
                     logger.warning("Bot will continue without real-time subscriptions")
@@ -1088,9 +1083,17 @@ class RealtimeBotEngine:
         for symbol in self.symbols:
             try:
                 # Check if we have enough candle data
-                if symbol not in candle_data_copy or len(candle_data_copy[symbol]) < 50:
-                    logger.info(f"⏭️  [DEBUG] {symbol}: Skipping - insufficient candle data ({len(candle_data_copy.get(symbol, []))} candles)")
+                # CRITICAL FIX (Dec 10): Lowered from 50 to 30 candles to support mid-session starts
+                # 30 candles is sufficient for: RSI(14), EMA(20), BB(20), ATR(14)
+                # MACD(12,26,9) may have slight warmup period but still functional
+                candle_count = len(candle_data_copy.get(symbol, []))
+                if symbol not in candle_data_copy or candle_count < 30:
+                    logger.info(f"⏭️  [DEBUG] {symbol}: Skipping - insufficient candle data ({candle_count} candles, need 30+)")
                     continue
+                
+                # Warn if using borderline data (30-49 candles)
+                if 30 <= candle_count < 50:
+                    logger.debug(f"⚠️  [DEBUG] {symbol}: Analyzing with limited data ({candle_count} candles) - MACD warming up")
                 
                 # Skip if already have position
                 if self._position_manager.has_position(symbol):

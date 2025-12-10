@@ -418,18 +418,18 @@ class RealtimeBotEngine:
     def _continuous_candle_building(self):
         """
         Continuously build 1-minute candles from tick data.
-        Runs every 5 seconds to aggregate ticks into candles.
+        Runs every 1 second for faster indicator updates.
         """
-        logger.info("📊 Candle builder thread started (5s interval)")
+        logger.info("📊 Candle builder thread started (1s interval for faster updates)")
         
         while self.is_running:
             try:
                 self._build_candles()
-                time.sleep(5)  # Build candles every 5 seconds
+                time.sleep(1)  # Build candles every 1 second (5X faster!)
                 
             except Exception as e:
                 logger.error(f"Error building candles: {e}")
-                time.sleep(5)
+                time.sleep(1)
     
     def _build_candles(self):
         """Build 1-minute candles from tick data and calculate technical indicators"""
@@ -715,18 +715,28 @@ class RealtimeBotEngine:
         )
         
         # Calculate time range
-        # If before market open, fetch from previous trading day
-        # If after market open, fetch from today
+        # CRITICAL OPTIMIZATION: Fetch FULL previous trading session (9:15 AM - 3:30 PM = 375 candles)
+        # This allows INSTANT signal generation at 9:16 AM instead of waiting 50 minutes!
+        # 375 candles is MORE than enough for all indicators (RSI, MACD, ATR, ADX, SMA50)
         if now < market_open_time:
-            # Fetch from previous trading day (yesterday)
-            to_date = market_open_time - timedelta(days=1)
-            from_date = to_date - timedelta(minutes=400)
-            logger.info(f"📊 Fetching previous day's data (to: {to_date})")
+            # Before market open: Fetch yesterday's COMPLETE trading session
+            yesterday = now - timedelta(days=1)
+            # Handle weekends: if today is Monday, fetch from Friday
+            while yesterday.weekday() >= 5:  # Saturday=5, Sunday=6
+                yesterday -= timedelta(days=1)
+            to_date = yesterday.replace(hour=15, minute=30, second=0, microsecond=0)  # Yesterday 3:30 PM
+            from_date = yesterday.replace(hour=9, minute=15, second=0, microsecond=0)  # Yesterday 9:15 AM
+            logger.info(f"📊 Fetching previous trading session: {from_date.strftime('%Y-%m-%d %H:%M')} to {to_date.strftime('%Y-%m-%d %H:%M')}")
+            logger.info(f"📊 Expected ~375 candles (full session) for INSTANT signal generation!")
         else:
-            # Fetch from today
-            to_date = datetime.now()
-            from_date = to_date - timedelta(minutes=400)
-            logger.info(f"📊 Fetching today's data (to: {to_date})")
+            # After market open: Fetch yesterday's session + today's live candles
+            yesterday = now - timedelta(days=1)
+            while yesterday.weekday() >= 5:  # Handle weekends
+                yesterday -= timedelta(days=1)
+            to_date = now  # Current time (includes today's candles)
+            from_date = yesterday.replace(hour=9, minute=15, second=0, microsecond=0)  # Yesterday 9:15 AM
+            logger.info(f"📊 Fetching yesterday + today: {from_date.strftime('%Y-%m-%d %H:%M')} to {to_date.strftime('%Y-%m-%d %H:%M')}")
+            logger.info(f"📊 Expected 375+ candles for immediate trading!")
         
         success_count = 0
         fail_count = 0
@@ -1082,18 +1092,14 @@ class RealtimeBotEngine:
         
         for symbol in self.symbols:
             try:
-                # Check if we have enough candle data
-                # CRITICAL FIX (Dec 10): Lowered from 50 to 30 candles to support mid-session starts
-                # 30 candles is sufficient for: RSI(14), EMA(20), BB(20), ATR(14)
-                # MACD(12,26,9) may have slight warmup period but still functional
+                # Check if we have enough candle data (need 50 for full indicator accuracy)
+                # 50 candles ensures: RSI(14), MACD(26), EMA(20), BB(20), ATR(14), ADX(28)
+                # All patterns (Double Top/Bottom, Flags, Triangles) work optimally
+                # SMA50 available for trend confirmation
                 candle_count = len(candle_data_copy.get(symbol, []))
-                if symbol not in candle_data_copy or candle_count < 30:
-                    logger.info(f"⏭️  [DEBUG] {symbol}: Skipping - insufficient candle data ({candle_count} candles, need 30+)")
+                if symbol not in candle_data_copy or candle_count < 50:
+                    logger.info(f"⏭️  [DEBUG] {symbol}: Skipping - insufficient candle data ({candle_count} candles, need 50+)")
                     continue
-                
-                # Warn if using borderline data (30-49 candles)
-                if 30 <= candle_count < 50:
-                    logger.debug(f"⚠️  [DEBUG] {symbol}: Analyzing with limited data ({candle_count} candles) - MACD warming up")
                 
                 # Skip if already have position
                 if self._position_manager.has_position(symbol):

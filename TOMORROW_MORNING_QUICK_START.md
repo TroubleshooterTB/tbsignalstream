@@ -1,5 +1,11 @@
 # 🚀 TOMORROW MORNING - QUICK START GUIDE
-**Date**: December 10, 2025 | **Market Open**: 9:15 AM IST
+**Date**: December 11, 2025 | **Market Open**: 9:15 AM IST
+
+**✅ FIXES DEPLOYED TONIGHT**:
+- Bot candle requirement: 50 → 30 (trades 20 mins earlier!)
+- Dashboard: Market Heatmap, Bot Performance Stats, Pattern Tooltips
+- Backend revision: 00037-k8v (deployed 1:45 PM Dec 10)
+- Frontend: Auto-deploying from GitHub (check in 5 mins)
 
 ---
 

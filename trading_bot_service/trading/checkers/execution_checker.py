@@ -168,7 +168,7 @@ class ExecutionChecker:
             return False
         
         rr_ratio = reward / risk
-        return rr_ratio >= 1.5  # Minimum 1.5:1 R/R
+        return rr_ratio >= 3.0  # Minimum 3.0:1 R/R
     
     def check_30_final_risk_assessment(self, data: pd.DataFrame, pattern_details: Dict[str, Any]) -> bool:
         """Check 30: Final Cumulative Risk Assessment"""
@@ -329,8 +329,8 @@ class ExecutionChecker:
         if potential_risk == 0: return False, "Check 26 FAILED: Risk cannot be zero."
 
         rr_ratio = potential_reward / potential_risk
-        if rr_ratio < 2.0:
-            return False, f"Check 26 FAILED: Risk/Reward ratio ({rr_ratio:.2f}) is below 2.0."
+        if rr_ratio < 3.0:
+            return False, f"Check 26 FAILED: Risk/Reward ratio ({rr_ratio:.2f}) is below 3.0."
         return True, "Check 26 PASSED: Risk Profile."
 
     def _check_27_time_of_day(self, *args) -> Tuple[bool, str]:

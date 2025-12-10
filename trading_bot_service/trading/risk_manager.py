@@ -22,7 +22,7 @@ class RiskLimits:
     max_daily_loss_pct: float = 0.03  # Max 3% daily loss
     max_correlation: float = 0.7  # Max correlation between positions
     max_open_positions: int = 5  # Max concurrent positions
-    min_risk_reward: float = 2.0  # Min 1:2 risk/reward
+    min_risk_reward: float = 3.0  # Min 1:3 risk/reward
     max_sector_exposure: float = 0.30  # Max 30% in one sector
 
 

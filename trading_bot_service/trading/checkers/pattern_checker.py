@@ -22,7 +22,7 @@ class AdvancedPriceActionAnalyzer:
         dynamically calculated entry, stop-loss, and an initial take-profit target based on volatility.
     """
 
-    def __init__(self, confidence_threshold=0.95, reward_risk_ratio=2.5):
+    def __init__(self, confidence_threshold=0.95, reward_risk_ratio=3.0):
         """
         Initializes the analyzer.
         :param confidence_threshold: The percentage of checks that must pass to generate a signal.

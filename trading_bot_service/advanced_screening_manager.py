@@ -846,11 +846,11 @@ class AdvancedScreeningManager:
             reward = abs(target - entry)
             rr_ratio = reward / risk if risk > 0 else 0
             
-            if rr_ratio >= 2.5:
+            if rr_ratio >= 3.5:
                 scores['risk_reward'] = 100
-            elif rr_ratio >= 2.0:
+            elif rr_ratio >= 3.0:
                 scores['risk_reward'] = 80
-            elif rr_ratio >= 1.5:
+            elif rr_ratio >= 2.5:
                 scores['risk_reward'] = 60
             else:
                 scores['risk_reward'] = 30
@@ -858,8 +858,8 @@ class AdvancedScreeningManager:
             # Calculate overall confidence score
             overall_score = sum(scores.values()) / len(scores)
             
-            # Minimum confidence threshold: 60/100
-            min_confidence = 60.0
+            # Minimum confidence threshold: 95/100
+            min_confidence = 95.0
             
             if overall_score < min_confidence:
                 return False, (f"ML heuristic score too low: {overall_score:.1f}/100 "

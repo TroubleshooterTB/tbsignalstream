@@ -79,6 +79,7 @@ class RealtimeBotEngine:
         self._ironclad = None
         self._advanced_screening = None  # NEW: Universal 24-level screening layer
         self._ml_logger = None  # NEW: ML data logging for model training
+        self._activity_logger = None  # NEW: Real-time activity logging for dashboard
         
         # Control flags
         self.is_running = False
@@ -932,6 +933,15 @@ class RealtimeBotEngine:
             logger.error(f"Failed to initialize ML Logger: {e}")
             self._ml_logger = MLDataLogger(db_client=None)  # Disabled mode
         
+        # NEW: Initialize Bot Activity Logger for real-time dashboard
+        try:
+            from bot_activity_logger import BotActivityLogger
+            self._activity_logger = BotActivityLogger(user_id=self.user_id, db_client=self.db)
+            logger.info("✅ Bot Activity Logger initialized (real-time dashboard feed)")
+        except Exception as e:
+            logger.error(f"Failed to initialize Activity Logger: {e}")
+            self._activity_logger = None  # Disabled mode
+        
         # Initialize Ironclad if needed
         if self.strategy in ['ironclad', 'both']:
             from ironclad_strategy import IroncladStrategy
@@ -1158,6 +1168,20 @@ class RealtimeBotEngine:
                 
                 logger.info(f"✅ {symbol}: Pattern detected | Confidence: {confidence:.1f}% | R:R = 1:{rr_ratio:.2f}")
                 
+                # NEW: Log pattern detection to dashboard
+                if self._activity_logger:
+                    self._activity_logger.log_pattern_detected(
+                        symbol=symbol,
+                        pattern=pattern_details.get('pattern_name', 'Unknown'),
+                        confidence=confidence,
+                        rr_ratio=rr_ratio,
+                        details={
+                            'current_price': current_price,
+                            'stop_loss': stop_loss,
+                            'target': target
+                        }
+                    )
+                
             except Exception as e:
                 logger.error(f"Error analyzing {symbol}: {e}", exc_info=True)
         
@@ -1186,6 +1210,14 @@ class RealtimeBotEngine:
                     
                     # NEW: Advanced 24-Level Screening (before order placement)
                     logger.info(f"🔍 [{sig['symbol']}] Running Advanced 24-Level Screening...")
+                    
+                    # Log screening started
+                    if self._activity_logger:
+                        self._activity_logger.log_screening_started(
+                            symbol=sig['symbol'],
+                            pattern=sig['pattern_details'].get('pattern_name', 'Unknown')
+                        )
+                    
                     signal_data = {
                         'action': 'BUY' if sig['pattern_details'].get('breakout_direction', 'up') == 'up' else 'SELL',
                         'entry_price': sig['current_price'],
@@ -1205,6 +1237,14 @@ class RealtimeBotEngine:
                     
                     if not is_screened:
                         logger.warning(f"❌ [{sig['symbol']}] Advanced Screening BLOCKED: {screen_reason}")
+                        
+                        # Log screening failed to dashboard
+                        if self._activity_logger:
+                            self._activity_logger.log_screening_failed(
+                                symbol=sig['symbol'],
+                                pattern=sig['pattern_details'].get('pattern_name', 'Unknown'),
+                                reason=screen_reason
+                            )
                         
                         # Log rejected signal for ML training
                         if self._ml_logger and self._ml_logger.enabled:
@@ -1230,6 +1270,14 @@ class RealtimeBotEngine:
                         continue  # Skip this trade
 
                     logger.info(f"✅ [{sig['symbol']}] Advanced Screening PASSED: {screen_reason}")
+                    
+                    # Log screening passed to dashboard
+                    if self._activity_logger:
+                        self._activity_logger.log_screening_passed(
+                            symbol=sig['symbol'],
+                            pattern=sig['pattern_details'].get('pattern_name', 'Unknown'),
+                            reason=screen_reason
+                        )
 
                     # Log signal for ML training (before order placement)
                     ml_signal_id = None
@@ -1594,6 +1642,20 @@ class RealtimeBotEngine:
             doc_ref = db.collection('trading_signals').add(signal_data)
             logger.info(f"✅ [DEBUG] Signal written to Firestore! Doc ID: {doc_ref[1].id}")
             logger.info(f"🎯 SIGNAL GENERATED: {symbol} @ ₹{entry_price:.2f} - Check dashboard NOW!")
+            
+            # Log signal generation to activity feed
+            if self._activity_logger:
+                pattern_name = reason.split('Pattern: ')[-1].split(' |')[0] if 'Pattern:' in reason else 'Unknown'
+                self._activity_logger.log_signal_generated(
+                    symbol=symbol,
+                    pattern=pattern_name,
+                    confidence=confidence,
+                    rr_ratio=(target - entry_price) / (entry_price - stop_loss) if (entry_price - stop_loss) > 0 else 0,
+                    entry_price=entry_price,
+                    stop_loss=stop_loss,
+                    profit_target=target
+                )
+                
         except Exception as e:
             logger.error(f"❌ [DEBUG] Failed to write signal to Firestore: {e}", exc_info=True)
         

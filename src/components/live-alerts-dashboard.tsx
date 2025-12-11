@@ -31,6 +31,7 @@ import { OrderBook } from "@/components/order-book";
 import { MarketHeatmap } from "@/components/market-heatmap";
 import { BotPerformanceStats } from "@/components/bot-performance-stats";
 import { PatternBadge } from "@/components/pattern-education";
+import { BotActivityFeed } from "@/components/bot-activity-feed";
 import { db } from "@/lib/firebase";
 import { onSnapshot, collection, query, where, orderBy, limit } from "firebase/firestore";
 
@@ -381,6 +382,9 @@ export function LiveAlertsDashboard() {
         <MarketHeatmap prices={livePrices} previousPrices={previousPrices} />
         <BotPerformanceStats />
       </div>
+      
+      {/* Bot Activity Feed - NEW: Real-time analysis monitoring */}
+      <BotActivityFeed />
       
       {/* Unified Dashboard - All Sections Always Visible */}
       <div className="space-y-4">

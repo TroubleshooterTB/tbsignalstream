@@ -457,6 +457,11 @@ class RealtimeBotEngine:
                     'volume': 'sum'
                 }).dropna()
                 
+                # CRITICAL FIX: Rename columns to uppercase for pattern detector compatibility
+                # Pattern detector expects: 'Open', 'High', 'Low', 'Close', 'Volume'
+                # But resampled candles have lowercase: 'open', 'high', 'low', 'close', 'volume'
+                candles.columns = [col.capitalize() for col in candles.columns]
+                
                 # Calculate technical indicators if we have enough data
                 if len(candles) >= 200:
                     candles = self._calculate_indicators(candles)
@@ -478,46 +483,47 @@ class RealtimeBotEngine:
         - Volume SMA: 10
         
         Args:
-            df: DataFrame with OHLCV data
+            df: DataFrame with OHLCV data (capitalized columns: Open, High, Low, Close, Volume)
             
         Returns:
             DataFrame with added indicator columns
         """
         try:
+            # CRITICAL FIX: Use capitalized column names to match pattern detector
             # Simple Moving Averages
-            df['sma_10'] = df['close'].rolling(window=10).mean()
-            df['sma_20'] = df['close'].rolling(window=20).mean()
-            df['sma_50'] = df['close'].rolling(window=50).mean()
-            df['sma_100'] = df['close'].rolling(window=100).mean()
-            df['sma_200'] = df['close'].rolling(window=200).mean()
+            df['sma_10'] = df['Close'].rolling(window=10).mean()
+            df['sma_20'] = df['Close'].rolling(window=20).mean()
+            df['sma_50'] = df['Close'].rolling(window=50).mean()
+            df['sma_100'] = df['Close'].rolling(window=100).mean()
+            df['sma_200'] = df['Close'].rolling(window=200).mean()
             
             # RSI (14)
-            delta = df['close'].diff()
+            delta = df['Close'].diff()
             gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
             loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
             rs = gain / loss
             df['rsi'] = 100 - (100 / (1 + rs))
             
             # MACD (12, 26, 9)
-            ema_12 = df['close'].ewm(span=12, adjust=False).mean()
-            ema_26 = df['close'].ewm(span=26, adjust=False).mean()
+            ema_12 = df['Close'].ewm(span=12, adjust=False).mean()
+            ema_26 = df['Close'].ewm(span=26, adjust=False).mean()
             df['macd'] = ema_12 - ema_26
             df['macd_signal'] = df['macd'].ewm(span=9, adjust=False).mean()
             df['macd_hist'] = df['macd'] - df['macd_signal']
             
             # ATR (14) - True Range calculation
             df['tr'] = np.maximum(
-                df['high'] - df['low'],
+                df['High'] - df['Low'],
                 np.maximum(
-                    abs(df['high'] - df['close'].shift(1)),
-                    abs(df['low'] - df['close'].shift(1))
+                    abs(df['High'] - df['Close'].shift(1)),
+                    abs(df['Low'] - df['Close'].shift(1))
                 )
             )
             df['atr'] = df['tr'].rolling(window=14).mean()
             
             # ADX (14) - Directional Movement Index
-            df['high_diff'] = df['high'] - df['high'].shift(1)
-            df['low_diff'] = df['low'].shift(1) - df['low']
+            df['high_diff'] = df['High'] - df['High'].shift(1)
+            df['low_diff'] = df['Low'].shift(1) - df['Low']
             
             df['plus_dm'] = np.where((df['high_diff'] > df['low_diff']) & (df['high_diff'] > 0), df['high_diff'], 0)
             df['minus_dm'] = np.where((df['low_diff'] > df['high_diff']) & (df['low_diff'] > 0), df['low_diff'], 0)
@@ -533,12 +539,12 @@ class RealtimeBotEngine:
             
             # VWAP (Volume Weighted Average Price)
             if isinstance(df.index, pd.DatetimeIndex):
-                df['vwap'] = (df['volume'] * (df['high'] + df['low'] + df['close']) / 3).cumsum() / df['volume'].cumsum()
+                df['vwap'] = (df['Volume'] * (df['High'] + df['Low'] + df['Close']) / 3).cumsum() / df['Volume'].cumsum()
             else:
-                df['vwap'] = (df['high'] + df['low'] + df['close']) / 3  # Fallback to typical price
+                df['vwap'] = (df['High'] + df['Low'] + df['Close']) / 3  # Fallback to typical price
             
             # Volume SMA (10)
-            df['volume_sma'] = df['volume'].rolling(window=10).mean()
+            df['volume_sma'] = df['Volume'].rolling(window=10).mean()
             
             # Clean up temporary columns
             df = df.drop(columns=['tr', 'high_diff', 'low_diff', 'plus_dm', 'minus_dm'], errors='ignore')

@@ -133,6 +133,10 @@ class HistoricalDataManager:
                     for col in ['open', 'high', 'low', 'close', 'volume']:
                         df[col] = pd.to_numeric(df[col])
                     
+                    # CRITICAL FIX: Capitalize column names for pattern detector compatibility
+                    # Pattern detector expects: 'Open', 'High', 'Low', 'Close', 'Volume'
+                    df.columns = [col.capitalize() for col in df.columns]
+                    
                     logger.info(f"✅ Fetched {len(df)} candles for {symbol}")
                     return df
                 else:

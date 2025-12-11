@@ -501,7 +501,8 @@ class RealtimeBotEngine:
             delta = df['Close'].diff()
             gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
             loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-            rs = gain / loss
+            # Prevent division by zero
+            rs = gain / loss.replace(0, 1e-10)
             df['rsi'] = 100 - (100 / (1 + rs))
             
             # MACD (12, 26, 9)
@@ -529,10 +530,13 @@ class RealtimeBotEngine:
             df['minus_dm'] = np.where((df['low_diff'] > df['high_diff']) & (df['low_diff'] > 0), df['low_diff'], 0)
             
             atr_14 = df['tr'].rolling(window=14).mean()
-            plus_di = 100 * (df['plus_dm'].rolling(window=14).mean() / atr_14)
-            minus_di = 100 * (df['minus_dm'].rolling(window=14).mean() / atr_14)
+            # Prevent division by zero in DI calculations
+            plus_di = 100 * (df['plus_dm'].rolling(window=14).mean() / atr_14.replace(0, 1e-10))
+            minus_di = 100 * (df['minus_dm'].rolling(window=14).mean() / atr_14.replace(0, 1e-10))
             
-            dx = 100 * abs(plus_di - minus_di) / (plus_di + minus_di)
+            # Prevent division by zero in DX calculation
+            di_sum = plus_di + minus_di
+            dx = 100 * abs(plus_di - minus_di) / di_sum.replace(0, 1e-10)
             df['adx'] = dx.rolling(window=14).mean()
             df['dmi_plus'] = plus_di
             df['dmi_minus'] = minus_di

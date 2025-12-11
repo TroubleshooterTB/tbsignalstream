@@ -105,6 +105,11 @@ class RiskManager:
             # Calculate max risk amount (2% of portfolio)
             max_risk_amount = self.portfolio_value * self.limits.max_position_size_pct
             
+            # Prevent division by zero - if risk_per_share is 0 or negative, return 0 shares
+            if risk_per_share <= 0:
+                logger.warning(f"Invalid risk_per_share: {risk_per_share}, returning 0 position size")
+                return 0
+            
             # Base position size
             base_size = int(max_risk_amount / risk_per_share)
             
@@ -114,7 +119,11 @@ class RiskManager:
             
             adjusted_size = int(base_size * volatility_factor)
             
-            # Ensure position doesn't exceed max portfolio percentage
+            # Ensure position doesn't exceed max portfolio percentage - prevent division by zero
+            if entry_price <= 0:
+                logger.warning(f"Invalid entry_price: {entry_price}, returning 0 position size")
+                return 0
+            
             max_value = self.portfolio_value * self.limits.max_position_size_pct
             max_shares = int(max_value / entry_price)
             

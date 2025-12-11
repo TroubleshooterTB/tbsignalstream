@@ -135,10 +135,13 @@ class IroncladStrategy:
             df['minus_dm'] = np.where((df['low_diff'] > df['high_diff']) & (df['low_diff'] > 0), df['low_diff'], 0)
             
             atr_14 = df['tr'].rolling(window=14).mean()
-            plus_di = 100 * (df['plus_dm'].rolling(window=14).mean() / atr_14)
-            minus_di = 100 * (df['minus_dm'].rolling(window=14).mean() / atr_14)
+            # Prevent division by zero in DI calculations
+            plus_di = 100 * (df['plus_dm'].rolling(window=14).mean() / atr_14.replace(0, 1e-10))
+            minus_di = 100 * (df['minus_dm'].rolling(window=14).mean() / atr_14.replace(0, 1e-10))
             
-            dx = 100 * abs(plus_di - minus_di) / (plus_di + minus_di)
+            # Prevent division by zero in DX calculation
+            di_sum = plus_di + minus_di
+            dx = 100 * abs(plus_di - minus_di) / di_sum.replace(0, 1e-10)
             df['adx'] = dx.rolling(window=14).mean()
             df['dmi_plus'] = plus_di
             df['dmi_minus'] = minus_di
@@ -167,7 +170,8 @@ class IroncladStrategy:
             delta = df['close'].diff()
             gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
             loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-            rs = gain / loss
+            # Prevent division by zero
+            rs = gain / loss.replace(0, 1e-10)
             df['rsi'] = 100 - (100 / (1 + rs))
             
             # ATR (14)
@@ -181,13 +185,17 @@ class IroncladStrategy:
             bb_std = df['close'].rolling(window=20).std()
             df['bb_upper'] = df['bb_middle'] + (2 * bb_std)
             df['bb_lower'] = df['bb_middle'] - (2 * bb_std)
-            df['bb_width'] = (df['bb_upper'] - df['bb_lower']) / df['bb_middle']
-            df['bb_position'] = (df['close'] - df['bb_lower']) / (df['bb_upper'] - df['bb_lower'])
+            # Prevent division by zero in BB calculations
+            df['bb_width'] = (df['bb_upper'] - df['bb_lower']) / df['bb_middle'].replace(0, 1e-10)
+            bb_range = (df['bb_upper'] - df['bb_lower']).replace(0, 1e-10)
+            df['bb_position'] = (df['close'] - df['bb_lower']) / bb_range
             
             # Stochastic Oscillator (14, 3, 3)
             lowest_low = df['low'].rolling(window=14).min()
             highest_high = df['high'].rolling(window=14).max()
-            df['stoch_k'] = 100 * (df['close'] - lowest_low) / (highest_high - lowest_low)
+            # Prevent division by zero in Stochastic
+            stoch_range = (highest_high - lowest_low).replace(0, 1e-10)
+            df['stoch_k'] = 100 * (df['close'] - lowest_low) / stoch_range
             df['stoch_d'] = df['stoch_k'].rolling(window=3).mean()
             
             # Exponential Moving Averages
@@ -202,25 +210,26 @@ class IroncladStrategy:
             df['obv'] = (np.sign(df['close'].diff()) * df['volume']).fillna(0).cumsum()
             df['obv_sma'] = df['obv'].rolling(window=20).mean()
             
-            # Williams %R (14)
-            df['williams_r'] = -100 * (highest_high - df['close']) / (highest_high - lowest_low)
+            # Williams %R (14) - prevent division by zero
+            wr_range = (highest_high - lowest_low).replace(0, 1e-10)
+            df['williams_r'] = -100 * (highest_high - df['close']) / wr_range
             
             # Average Directional Movement Index (ADX already calculated above)
-            # Price Rate of Change (ROC) - 12 period
-            df['roc'] = ((df['close'] - df['close'].shift(12)) / df['close'].shift(12)) * 100
+            # Price Rate of Change (ROC) - 12 period - prevent division by zero
+            df['roc'] = ((df['close'] - df['close'].shift(12)) / df['close'].shift(12).replace(0, 1e-10)) * 100
             
-            # Commodity Channel Index (CCI) - 20 period
+            # Commodity Channel Index (CCI) - 20 period - prevent division by zero
             typical_price = (df['high'] + df['low'] + df['close']) / 3
             sma_tp = typical_price.rolling(window=20).mean()
             mean_deviation = typical_price.rolling(window=20).apply(lambda x: np.abs(x - x.mean()).mean())
-            df['cci'] = (typical_price - sma_tp) / (0.015 * mean_deviation)
+            df['cci'] = (typical_price - sma_tp) / (0.015 * mean_deviation.replace(0, 1e-10))
             
-            # Money Flow Index (MFI) - 14 period
+            # Money Flow Index (MFI) - 14 period - prevent division by zero
             typical_price = (df['high'] + df['low'] + df['close']) / 3
             money_flow = typical_price * df['volume']
             positive_flow = money_flow.where(df['close'] > df['close'].shift(1), 0).rolling(window=14).sum()
             negative_flow = money_flow.where(df['close'] < df['close'].shift(1), 0).rolling(window=14).sum()
-            money_ratio = positive_flow / negative_flow
+            money_ratio = positive_flow / negative_flow.replace(0, 1e-10)
             df['mfi'] = 100 - (100 / (1 + money_ratio))
             
             # Parabolic SAR (simplified version)

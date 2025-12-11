@@ -284,8 +284,8 @@ class AdvancedScreeningManager:
                 return True, "Insufficient data for MA crossover check"
             
             # Calculate MAs (use EMA for responsiveness)
-            fast_ma = df['close'].ewm(span=self.config.fast_ma_period, adjust=False).mean()
-            slow_ma = df['close'].ewm(span=self.config.slow_ma_period, adjust=False).mean()
+            fast_ma = df['Close'].ewm(span=self.config.fast_ma_period, adjust=False).mean()
+            slow_ma = df['Close'].ewm(span=self.config.slow_ma_period, adjust=False).mean()
             
             # Current alignment
             current_fast = fast_ma.iloc[-1]
@@ -496,8 +496,8 @@ class AdvancedScreeningManager:
             gaps_found = []
             
             for i in range(1, len(recent_df)):
-                prev_close = recent_df['close'].iloc[i-1]
-                curr_open = recent_df['open'].iloc[i]
+                prev_close = recent_df['Close'].iloc[i-1]
+                curr_open = recent_df['Open'].iloc[i]
                 
                 gap_percent = abs(curr_open - prev_close) / prev_close
                 
@@ -506,7 +506,7 @@ class AdvancedScreeningManager:
                     gap_level = (prev_close + curr_open) / 2  # Mid-gap level
                     
                     # Check if gap is still unfilled
-                    subsequent_prices = recent_df['close'].iloc[i:]
+                    subsequent_prices = recent_df['Close'].iloc[i:]
                     if gap_type == 'up':
                         is_filled = any(p < prev_close for p in subsequent_prices)
                     else:
@@ -553,7 +553,7 @@ class AdvancedScreeningManager:
             recent_df = df.tail(self.config.nrb_lookback)
             
             # Calculate bar ranges
-            ranges = (recent_df['high'] - recent_df['low']) / recent_df['close']
+            ranges = (recent_df['High'] - recent_df['Low']) / recent_df['Close']
             
             # Current bar range
             current_range = ranges.iloc[-1]
@@ -754,7 +754,7 @@ class AdvancedScreeningManager:
             if 'sma_10' in df.columns and 'sma_50' in df.columns and len(df) >= 50:
                 sma_10 = df['sma_10'].iloc[-1]
                 sma_50 = df['sma_50'].iloc[-1]
-                price = df['close'].iloc[-1]
+                price = df['Close'].iloc[-1]
                 
                 if is_long:
                     # For longs: price > 10 SMA > 50 SMA is ideal
@@ -803,26 +803,26 @@ class AdvancedScreeningManager:
             
             # 3. Volume Score (0-100)
             if 'volume' in df.columns and len(df) >= 20:
-                current_vol = df['volume'].iloc[-1]
-                avg_vol = df['volume'].tail(20).mean()
+                current_vol = df['Volume'].iloc[-1]
+                avg_vol = df['Volume'].tail(20).mean()
                 vol_ratio = current_vol / avg_vol if avg_vol > 0 else 1.0
                 
                 # Higher volume is generally better
                 if vol_ratio > 2.0:
-                    scores['volume'] = 100
+                    scores['Volume'] = 100
                 elif vol_ratio > 1.5:
-                    scores['volume'] = 80
+                    scores['Volume'] = 80
                 elif vol_ratio > 1.0:
-                    scores['volume'] = 60
+                    scores['Volume'] = 60
                 else:
-                    scores['volume'] = 30
+                    scores['Volume'] = 30
             else:
-                scores['volume'] = 50
+                scores['Volume'] = 50
             
             # 4. Volatility Score (0-100)
             if 'atr' in df.columns:
                 atr = df['atr'].iloc[-1]
-                price = df['close'].iloc[-1]
+                price = df['Close'].iloc[-1]
                 atr_pct = (atr / price) * 100
                 
                 # Moderate volatility is best (1-3%)
@@ -838,7 +838,7 @@ class AdvancedScreeningManager:
                 scores['volatility'] = 50
             
             # 5. Risk/Reward Score (0-100)
-            entry = signal_data.get('entry_price', df['close'].iloc[-1])
+            entry = signal_data.get('entry_price', df['Close'].iloc[-1])
             stop = signal_data.get('stop_loss', entry * 0.97)
             target = signal_data.get('target', entry * 1.05)
             
@@ -893,9 +893,9 @@ class AdvancedScreeningManager:
                 return True, "Insufficient data for retest check"
             
             # Get recent price action
-            recent_highs = df['high'].tail(5)
-            recent_lows = df['low'].tail(5)
-            current_close = df['close'].iloc[-1]
+            recent_highs = df['High'].tail(5)
+            recent_lows = df['Low'].tail(5)
+            current_close = df['Close'].iloc[-1]
             
             # Identify potential breakout levels (recent swing highs/lows)
             if is_long:
@@ -962,3 +962,4 @@ class AdvancedScreeningManager:
             'tracked_breakouts': len(self.breakout_levels),
             'tracked_gaps': sum(len(gaps) for gaps in self.gap_levels.values()),
         }
+

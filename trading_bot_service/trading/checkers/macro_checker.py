@@ -39,7 +39,7 @@ class MacroChecker:
         """Check 1: Overall market trend alignment"""
         # Simplified: Check if price above 50 SMA
         if 'sma_50' in data.columns and len(data) > 50:
-            return float(data['close'].iloc[-1]) > float(data['sma_50'].iloc[-1])
+            return float(data['Close'].iloc[-1]) > float(data['sma_50'].iloc[-1])
         return True  # Pass if no data
     
     def check_2_sector_strength(self, data: pd.DataFrame, pattern_details: Dict[str, Any]) -> bool:
@@ -53,7 +53,7 @@ class MacroChecker:
                 return True  # Not enough data
             
             # Stock performance over last 20 days
-            stock_perf = (data['close'].iloc[-1] / data['close'].iloc[-20] - 1) * 100
+            stock_perf = (data['Close'].iloc[-1] / data['Close'].iloc[-20] - 1) * 100
             
             # If stock is significantly outperforming (for longs) or underperforming (for shorts)
             direction = pattern_details.get('direction', 'up')
@@ -129,14 +129,14 @@ class MacroChecker:
                 return True
             
             # Check for unusual volume spike (proxy for news catalyst)
-            recent_avg_volume = data['volume'].iloc[-10:-1].mean() if len(data) >= 10 else data['volume'].mean()
-            current_volume = data['volume'].iloc[-1]
+            recent_avg_volume = data['Volume'].iloc[-10:-1].mean() if len(data) >= 10 else data['Volume'].mean()
+            current_volume = data['Volume'].iloc[-1]
             
             volume_ratio = current_volume / recent_avg_volume if recent_avg_volume > 0 else 1.0
             
             # Check for unusual price movement (gap or large candle)
-            current_range = abs(data['close'].iloc[-1] - data['open'].iloc[-1])
-            avg_range = abs(data['close'] - data['open']).tail(10).mean()
+            current_range = abs(data['Close'].iloc[-1] - data['Open'].iloc[-1])
+            avg_range = abs(data['Close'] - data['Open']).tail(10).mean()
             range_ratio = current_range / avg_range if avg_range > 0 else 1.0
             
             # If both volume and price action are elevated, likely news-driven (good)
@@ -166,7 +166,7 @@ class MacroChecker:
                 return True
             
             current_atr = data['atr'].iloc[-1]
-            price = data['close'].iloc[-1]
+            price = data['Close'].iloc[-1]
             atr_pct = (current_atr / price) * 100
             
             # Check historical ATR to see if volatility is spiking
@@ -194,7 +194,7 @@ class MacroChecker:
         """Check 6: Liquidity conditions assessment"""
         # Simple check: Ensure volume is present
         if 'volume' in data.columns:
-            return data['volume'].iloc[-1] > 0
+            return data['Volume'].iloc[-1] > 0
         return True
     
     def check_7_volatility_regime(self, data: pd.DataFrame, pattern_details: Dict[str, Any]) -> bool:
@@ -202,7 +202,7 @@ class MacroChecker:
         # Simple check: Ensure ATR exists (not too volatile)
         if 'atr' in data.columns:
             atr = data['atr'].iloc[-1]
-            price = data['close'].iloc[-1]
+            price = data['Close'].iloc[-1]
             atr_pct = (atr / price) * 100
             # Reject if ATR > 5% (extreme volatility)
             return atr_pct < 5.0
@@ -218,13 +218,13 @@ class MacroChecker:
                 return True
             
             # Check for gap opening (possible overnight news)
-            prev_close = data['close'].iloc[-2]
-            current_open = data['open'].iloc[-1]
+            prev_close = data['Close'].iloc[-2]
+            current_open = data['Open'].iloc[-1]
             gap_pct = abs((current_open - prev_close) / prev_close) * 100
             
             # Check for unusual intraday volatility
-            current_range = data['high'].iloc[-1] - data['low'].iloc[-1]
-            current_price = data['close'].iloc[-1]
+            current_range = data['High'].iloc[-1] - data['Low'].iloc[-1]
+            current_price = data['Close'].iloc[-1]
             range_pct = (current_range / current_price) * 100
             
             # Large gap might indicate earnings or major news
@@ -343,3 +343,4 @@ class MacroChecker:
 if __name__ == '__main__':
     # This block is for independent testing of this module.
     print("Macro Checker Module Initialized. Ready for testing.")
+

@@ -83,13 +83,13 @@ class AdvancedPriceActionAnalyzer:
     # --- MARKET & SECTOR CONTEXT (4) ---
     def check_market_is_in_uptrend(self, market_data):
         market_data = self._calculate_indicators(market_data.copy())
-        return market_data['close'].iloc[-1] > market_data['ema_50'].iloc[-1], "Broader market (Index) is in an uptrend"
+        return market_data['Close'].iloc[-1] > market_data['ema_50'].iloc[-1], "Broader market (Index) is in an uptrend"
     def check_sector_is_in_uptrend(self, sector_data):
         sector_data = self._calculate_indicators(sector_data.copy())
-        return sector_data['close'].iloc[-1] > sector_data['ema_50'].iloc[-1], "Sector is in an uptrend"
+        return sector_data['Close'].iloc[-1] > sector_data['ema_50'].iloc[-1], "Sector is in an uptrend"
     def check_relative_strength_positive(self, stock_data, market_data):
-        stock_return = stock_data['close'].pct_change(20).iloc[-1]
-        market_return = market_data['close'].pct_change(20).iloc[-1]
+        stock_return = stock_data['Close'].pct_change(20).iloc[-1]
+        market_return = market_data['Close'].pct_change(20).iloc[-1]
         return stock_return > market_return, "Stock is outperforming the broader market"
     def check_no_major_news_event(self, stock_symbol):
         # In a live system, this would query a financial news API (e.g., for earnings announcements).
@@ -97,21 +97,21 @@ class AdvancedPriceActionAnalyzer:
 
     # --- TREND STRENGTH & QUALITY (6) ---
     def check_price_above_vwap(self, data):
-        return data['close'].iloc[-1] > data['VWAP_D'].iloc[-1], "Price is above the Volume-Weighted Average Price (VWAP)"
+        return data['Close'].iloc[-1] > data['VWAP_D'].iloc[-1], "Price is above the Volume-Weighted Average Price (VWAP)"
     def check_price_above_ema50(self, data):
-        return data['close'].iloc[-1] > data['ema_50'].iloc[-1], "Price is above the 50-period EMA (long-term trend)"
+        return data['Close'].iloc[-1] > data['ema_50'].iloc[-1], "Price is above the 50-period EMA (long-term trend)"
     def check_ema20_above_ema50(self, data):
         return data['ema_20'].iloc[-1] > data['ema_50'].iloc[-1], "20 EMA is above 50 EMA (short-term trend confirms long-term)"
     def check_adx_trending_up(self, data):
         return data['adx'].iloc[-1] > 25 and data['dmp'].iloc[-1] > data['dmn'].iloc[-1], "ADX > 25 indicates strong trend, +DI > -DI confirms bullish"
     def check_parabolic_sar_bullish(self, data):
-        return data['close'].iloc[-1] > data['psar_long'].iloc[-1], "Parabolic SAR is in a bullish position (below price)"
+        return data['Close'].iloc[-1] > data['psar_long'].iloc[-1], "Parabolic SAR is in a bullish position (below price)"
     def check_higher_highs_and_lows_long_term(self, data):
         last_30_bars = data.iloc[-30:]
-        recent_low = last_30_bars['low'].iloc[-10:].min()
-        prior_low = last_30_bars['low'].iloc[:-10].min()
-        recent_high = last_30_bars['high'].iloc[-10:].max()
-        prior_high = last_30_bars['high'].iloc[:-10].max()
+        recent_low = last_30_bars['Low'].iloc[-10:].min()
+        prior_low = last_30_bars['Low'].iloc[:-10].min()
+        recent_high = last_30_bars['High'].iloc[-10:].max()
+        prior_high = last_30_bars['High'].iloc[:-10].max()
         return recent_low > prior_low and recent_high > prior_high, "Clear pattern of higher highs and higher lows over the last 30 periods"
 
     # --- MOMENTUM & VOLUME CONFIRMATION (6) ---
@@ -125,56 +125,56 @@ class AdvancedPriceActionAnalyzer:
         # On-Balance Volume should be making higher highs along with price
         return data['OBV'].iloc[-1] > data['OBV'].iloc[-5:].min(), "On-Balance Volume (OBV) confirms upward price pressure"
     def check_volume_confirms_breakout(self, data):
-        avg_vol = data['volume'].rolling(window=20).mean().iloc[-1]
-        return data['volume'].iloc[-1] > avg_vol * 1.5, "Breakout volume is at least 150% of the 20-period average"
+        avg_vol = data['Volume'].rolling(window=20).mean().iloc[-1]
+        return data['Volume'].iloc[-1] > avg_vol * 1.5, "Breakout volume is at least 150% of the 20-period average"
     def check_price_near_upper_bollinger(self, data):
-        return data['close'].iloc[-1] > data['bb_mid'].iloc[-1], "Price is trading in the upper half of the Bollinger Bands"
+        return data['Close'].iloc[-1] > data['bb_mid'].iloc[-1], "Price is trading in the upper half of the Bollinger Bands"
 
     # --- PRICE ACTION & ENTRY SIGNAL (8) ---
     def check_bullish_engulfing_or_marubozu(self, data):
         last = data.iloc[-1]
         prev = data.iloc[-2]
-        is_engulfing = prev['close'] < prev['open'] and last['close'] > last['open'] and last['close'] > prev['open'] and last['open'] < prev['close']
-        body_size = last['close'] - last['open']
-        total_range = last['high'] - last['low']
+        is_engulfing = prev['Close'] < prev['Open'] and last['Close'] > last['Open'] and last['Close'] > prev['Open'] and last['Open'] < prev['Close']
+        body_size = last['Close'] - last['Open']
+        total_range = last['High'] - last['Low']
         is_marubozu = body_size > 0 and total_range > 0 and body_size / total_range > 0.95
         return is_engulfing or is_marubozu, "Strong bullish candle pattern (Engulfing or Marubozu) present"
     def check_breakout_from_consolidation(self, data):
         # Looks for a breakout from a tight trading range (a "ledge" in price action terms)
-        recent_range = data['high'].iloc[-10:-1].max() - data['low'].iloc[-10:-1].min()
+        recent_range = data['High'].iloc[-10:-1].max() - data['Low'].iloc[-10:-1].min()
         is_consolidating = recent_range < (data['atr'].iloc[-1] * 2)
-        is_breakout = data['close'].iloc[-1] > data['high'].iloc[-10:-1].max()
+        is_breakout = data['Close'].iloc[-1] > data['High'].iloc[-10:-1].max()
         return is_consolidating and is_breakout, "Breakout from a recent consolidation/ledge"
     def check_is_second_entry_buy_signal(self, data):
         # Al Brooks concept: A second signal is more reliable. Checks for a higher low after a recent swing high.
-        swing_high_idx = data['high'].iloc[-20:-2].idxmax()
+        swing_high_idx = data['High'].iloc[-20:-2].idxmax()
         since_high = data.loc[swing_high_idx:]
         if len(since_high) < 3: return False, "Not a second entry signal"
-        pullback_low_idx = since_high['low'].iloc[1:].idxmin()
-        is_higher_low = data['low'].loc[pullback_low_idx] > data['low'].iloc[-20:swing_high_idx].min()
-        is_breaking_out_now = data['close'].iloc[-1] > data['high'].loc[swing_high_idx]
+        pullback_low_idx = since_high['Low'].iloc[1:].idxmin()
+        is_higher_low = data['Low'].loc[pullback_low_idx] > data['Low'].iloc[-20:swing_high_idx].min()
+        is_breaking_out_now = data['Close'].iloc[-1] > data['High'].loc[swing_high_idx]
         return is_higher_low and is_breaking_out_now, "Second entry buy signal (higher low pullback)"
     def check_no_strong_bearish_reversal_bar(self, data):
         # Ensures the last few bars don't show significant selling pressure (e.g., a huge bear bar)
         last_bar = data.iloc[-1]
-        is_strong_bear_bar = (last_bar['open'] - last_bar['close']) > data['atr'].iloc[-1] and last_bar['close'] < (last_bar['high'] + last_bar['low']) / 2
+        is_strong_bear_bar = (last_bar['Open'] - last_bar['Close']) > data['atr'].iloc[-1] and last_bar['Close'] < (last_bar['High'] + last_bar['Low']) / 2
         return not is_strong_bear_bar, "Absence of a strong bearish reversal bar in the last 3 periods"
     def check_no_bearish_divergence(self, data):
         # A more robust check for bearish divergence (higher high in price, lower high in MACD)
-        highs = data[data['high'] == data['high'].rolling(15).max()]
+        highs = data[data['High'] == data['High'].rolling(15).max()]
         if len(highs) < 2: return True, "No bearish divergence found"
-        divergence = highs['high'].iloc[-1] > highs['high'].iloc[-2] and highs['macd_line'].iloc[-1] < highs['macd_line'].iloc[-2]
+        divergence = highs['High'].iloc[-1] > highs['High'].iloc[-2] and highs['macd_line'].iloc[-1] < highs['macd_line'].iloc[-2]
         return not divergence, "No bearish MACD divergence found"
     def check_volatility_expanding(self, data):
         # Bollinger Bandwidth increasing indicates volatility is expanding, which fuels trends.
         return data['bb_bw'].iloc[-1] > data['bb_bw'].iloc[-2], "Volatility is expanding (Bollinger Bands widening)"
     def check_atr_is_reasonable(self, data):
-        atr_percent = (data['atr'].iloc[-1] / data['close'].iloc[-1]) * 100
+        atr_percent = (data['atr'].iloc[-1] / data['Close'].iloc[-1]) * 100
         return 0.5 < atr_percent < 7.0, "ATR is reasonable (0.5%-7%), not too choppy or stagnant"
     def check_price_above_recent_pivot(self, data):
         # Checks if price is above the most recent significant swing low.
-        recent_low = data['low'].iloc[-20:-2].min()
-        return data['close'].iloc[-1] > recent_low, "Price is trading above the last significant swing low"
+        recent_low = data['Low'].iloc[-20:-2].min()
+        return data['Close'].iloc[-1] > recent_low, "Price is trading above the last significant swing low"
 
     def run_full_analysis(self, stock_data, market_data, sector_data):
         """Runs all checks and calculates the confidence score."""
@@ -216,7 +216,7 @@ class AdvancedPriceActionAnalyzer:
             print(f"- {check}")
 
         if confidence >= self.confidence_threshold:
-            entry_price = stock_data['close'].iloc[-1]
+            entry_price = stock_data['Close'].iloc[-1]
             atr_value = stock_data['atr'].iloc[-1]
             stop_loss = entry_price - (2 * atr_value)
             take_profit = entry_price + (self.reward_risk_ratio * (entry_price - stop_loss))
@@ -248,8 +248,8 @@ class AdvancedPriceActionAnalyzer:
         """Check 10: Breakout Volume Confirmation"""
         if 'volume' not in data.columns or len(data) < 20:
             return True
-        avg_volume = data['volume'].tail(20).mean()
-        current_volume = data['volume'].iloc[-1]
+        avg_volume = data['Volume'].tail(20).mean()
+        current_volume = data['Volume'].iloc[-1]
         return current_volume > avg_volume * 1.5  # 50% above average
     
     def check_11_breakout_price_action(self, data: pd.DataFrame, pattern_details: dict) -> bool:
@@ -258,23 +258,23 @@ class AdvancedPriceActionAnalyzer:
         if len(data) < 2:
             return True
         latest = data.iloc[-1]
-        body_size = abs(latest['close'] - latest['open'])
-        candle_range = latest['high'] - latest['low']
+        body_size = abs(latest['Close'] - latest['Open'])
+        candle_range = latest['High'] - latest['Low']
         # Strong candle if body is >60% of range
         return (body_size / candle_range) > 0.6 if candle_range > 0 else True
     
     def check_12_false_breakout_risk(self, data: pd.DataFrame, pattern_details: dict) -> bool:
         """Check 12: False Breakout Risk Assessment"""
         # Low risk if price is well above breakout level
-        breakout_price = pattern_details.get('breakout_price', data['close'].iloc[-1])
-        current_price = data['close'].iloc[-1]
+        breakout_price = pattern_details.get('breakout_price', data['Close'].iloc[-1])
+        current_price = data['Close'].iloc[-1]
         return current_price > breakout_price * 1.005  # 0.5% above breakout
     
     def check_13_distance_to_nearest_support_resistance(self, data: pd.DataFrame, pattern_details: dict) -> bool:
         """Check 13: Distance to Nearest Support/Resistance"""
         # Ensure we're not too close to resistance
         target = pattern_details.get('calculated_price_target', 0)
-        current_price = data['close'].iloc[-1]
+        current_price = data['Close'].iloc[-1]
         if target > 0:
             distance_pct = ((target - current_price) / current_price) * 100
             return distance_pct > 2  # At least 2% room to target
@@ -291,8 +291,8 @@ class AdvancedPriceActionAnalyzer:
             
             # Find swing high and low in last 50 candles
             recent_data = data.tail(50)
-            swing_high = recent_data['high'].max()
-            swing_low = recent_data['low'].min()
+            swing_high = recent_data['High'].max()
+            swing_low = recent_data['Low'].min()
             
             # Calculate Fibonacci retracement levels
             diff = swing_high - swing_low
@@ -301,7 +301,7 @@ class AdvancedPriceActionAnalyzer:
             fib_0_618 = swing_high - (diff * 0.618)
             
             # Check if current price or target aligns with Fib levels (within 1%)
-            current_price = data['close'].iloc[-1]
+            current_price = data['Close'].iloc[-1]
             target = pattern_details.get('calculated_price_target', current_price * 1.03)
             
             tolerance = current_price * 0.01  # 1% tolerance
@@ -341,8 +341,8 @@ class AdvancedPriceActionAnalyzer:
         if 'volume' not in data.columns or len(data) < 10:
             return True
         # Volume should be increasing
-        vol_start = data['volume'].tail(10).head(5).mean()
-        vol_end = data['volume'].tail(5).mean()
+        vol_start = data['Volume'].tail(10).head(5).mean()
+        vol_end = data['Volume'].tail(5).mean()
         return vol_end > vol_start * 0.9  # At least 90% of start volume
     
     def check_17_confluence_with_price_action(self, data: pd.DataFrame, pattern_details: dict) -> bool:
@@ -351,7 +351,7 @@ class AdvancedPriceActionAnalyzer:
         if len(data) < 3:
             return True
         # Last 3 candles should show momentum
-        closes = data['close'].tail(3).values
+        closes = data['Close'].tail(3).values
         return closes[-1] > closes[0]  # Higher close than 3 candles ago
     
     def check_18_pattern_relative_to_volatility(self, data: pd.DataFrame, pattern_details: dict) -> bool:
@@ -368,8 +368,8 @@ class AdvancedPriceActionAnalyzer:
         # Breakout candle should be significant
         if len(data) < 10:
             return True
-        recent_ranges = (data['high'] - data['low']).tail(10).mean()
-        current_range = data['high'].iloc[-1] - data['low'].iloc[-1]
+        recent_ranges = (data['High'] - data['Low']).tail(10).mean()
+        current_range = data['High'].iloc[-1] - data['Low'].iloc[-1]
         return current_range > recent_ranges * 1.2  # 20% larger than average
     
     def check_20_confluence_with_wave_count(self, data: pd.DataFrame, pattern_details: dict) -> bool:
@@ -383,7 +383,7 @@ class AdvancedPriceActionAnalyzer:
             
             # Simplified wave analysis: Check if we're in an impulsive move
             # Look at the last 5 swings (highs/lows alternation)
-            closes = data['close'].tail(20)
+            closes = data['Close'].tail(20)
             
             # Count higher highs and higher lows (bullish impulse)
             # or lower highs and lower lows (bearish impulse)
@@ -441,17 +441,17 @@ class AdvancedPriceActionAnalyzer:
             
             # Short timeframe (5-period)
             if 'sma_5' in data.columns:
-                tf1_bullish = data['close'].iloc[-1] > data['sma_5'].iloc[-1]
+                tf1_bullish = data['Close'].iloc[-1] > data['sma_5'].iloc[-1]
                 timeframe_checks.append(tf1_bullish if direction == 'up' else not tf1_bullish)
             
             # Medium timeframe (20-period as proxy for 5-min)
             if 'sma_20' in data.columns:
-                tf2_bullish = data['close'].iloc[-1] > data['sma_20'].iloc[-1]
+                tf2_bullish = data['Close'].iloc[-1] > data['sma_20'].iloc[-1]
                 timeframe_checks.append(tf2_bullish if direction == 'up' else not tf2_bullish)
             
             # Longer timeframe (50-period as proxy for 15-min)
             if 'sma_50' in data.columns and len(data) >= 50:
-                tf3_bullish = data['close'].iloc[-1] > data['sma_50'].iloc[-1]
+                tf3_bullish = data['Close'].iloc[-1] > data['sma_50'].iloc[-1]
                 timeframe_checks.append(tf3_bullish if direction == 'up' else not tf3_bullish)
             
             # Need at least 2 timeframes aligned
@@ -511,9 +511,9 @@ class AdvancedPriceActionAnalyzer:
             
             # Check for price at 52-week extremes (proxy for sentiment)
             if len(data) >= 252:  # About 1 year of data
-                high_52w = data['high'].tail(252).max()
-                low_52w = data['low'].tail(252).min()
-                current_price = data['close'].iloc[-1]
+                high_52w = data['High'].tail(252).max()
+                low_52w = data['Low'].tail(252).min()
+                current_price = data['Close'].iloc[-1]
                 
                 # Calculate distance from extremes
                 dist_from_high = ((high_52w - current_price) / high_52w) * 100
@@ -564,3 +564,4 @@ if __name__ == '__main__':
             print(f"{key.replace('_', ' ').title()}: {value}")
     else:
         print("\n--- NO TRADE SIGNAL: Confidence threshold not met. ---")
+

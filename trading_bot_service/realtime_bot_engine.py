@@ -956,8 +956,11 @@ class RealtimeBotEngine:
         Trading Hours: 9:15 AM - 3:30 PM IST (Mon-Fri)
         """
         from datetime import datetime
+        import pytz
         
-        now = datetime.now()
+        # Get current time in IST (Indian Standard Time)
+        ist = pytz.timezone('Asia/Kolkata')
+        now = datetime.now(ist)
         
         # Check if weekend
         if now.weekday() >= 5:  # Saturday = 5, Sunday = 6
@@ -970,7 +973,7 @@ class RealtimeBotEngine:
         is_open = market_open <= current_time <= market_close
         
         if not is_open:
-            logger.debug(f"⏰ Market closed - Current time: {current_time.strftime('%H:%M:%S')}")
+            logger.debug(f"⏰ Market closed - Current IST time: {current_time.strftime('%H:%M:%S')}")
         
         return is_open
     

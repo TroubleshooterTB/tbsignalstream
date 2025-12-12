@@ -101,7 +101,8 @@ class TradingBotInstance:
                 credentials=self.credentials,
                 symbols=self.symbols,
                 trading_mode=self.mode,
-                strategy=self.strategy
+                strategy=self.strategy,
+                db_client=db  # Pass Firestore client for Activity Logger
             )
             
             # Run the bot (WebSocket-powered real-time execution)

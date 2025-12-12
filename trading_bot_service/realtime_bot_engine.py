@@ -29,12 +29,13 @@ class RealtimeBotEngine:
     """
     
     def __init__(self, user_id: str, credentials: dict, symbols: list, 
-                 trading_mode: str = 'paper', strategy: str = 'pattern'):
+                 trading_mode: str = 'paper', strategy: str = 'pattern', db_client=None):
         self.user_id = user_id
         self.credentials = credentials
         self.symbols = symbols
         self.trading_mode = trading_mode.lower()
         self.strategy = strategy.lower()
+        self.db = db_client  # Firestore client for Activity Logger and ML Logger
         
         # Extract credentials
         self.jwt_token = credentials.get('jwt_token', '')

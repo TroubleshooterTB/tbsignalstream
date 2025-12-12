@@ -464,12 +464,25 @@ class RealtimeBotEngine:
                 # But resampled candles have lowercase: 'open', 'high', 'low', 'close', 'volume'
                 candles.columns = [col.capitalize() for col in candles.columns]
                 
-                # Calculate technical indicators if we have enough data
-                if len(candles) >= 200:
-                    candles = self._calculate_indicators(candles)
-                
-                # Store candle data with indicators
-                self.candle_data[symbol] = candles
+                # CRITICAL FIX: APPEND new candles to historical data instead of replacing
+                # If we have historical data, merge it with new realtime candles
+                if symbol in self.candle_data and len(self.candle_data[symbol]) > len(candles):
+                    historical_df = self.candle_data[symbol]
+                    # Combine historical + new candles, remove duplicates, keep latest
+                    combined = pd.concat([historical_df, candles])
+                    combined = combined[~combined.index.duplicated(keep='last')]
+                    combined = combined.sort_index()
+                    
+                    # Calculate indicators on FULL dataset (historical + new)
+                    if len(combined) >= 200:
+                        combined = self._calculate_indicators(combined)
+                    
+                    self.candle_data[symbol] = combined
+                else:
+                    # First run or realtime has more candles - use realtime only
+                    if len(candles) >= 200:
+                        candles = self._calculate_indicators(candles)
+                    self.candle_data[symbol] = candles
     
     def _calculate_indicators(self, df: pd.DataFrame) -> pd.DataFrame:
         """

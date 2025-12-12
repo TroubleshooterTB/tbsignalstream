@@ -1164,15 +1164,40 @@ class RealtimeBotEngine:
                 
                 df = candle_data_copy[symbol].copy()
                 
-                # Pattern detection
+                # Pattern detection (detects both forming and confirmed patterns)
                 pattern_details = self._pattern_detector.scan(df)
                 if not pattern_details:
                     continue
                 
+                # Check if pattern is tradeable (confirmed breakout) or just forming (watchlist)
+                is_tradeable = pattern_details.get('tradeable', True)  # Default True for backward compatibility
+                pattern_status = pattern_details.get('pattern_status', 'confirmed')
+                
                 # Add symbol to pattern_details for fundamental checks
                 pattern_details['symbol'] = symbol
                 
-                # 30-point validation (optional)
+                # Log to Activity Feed (both forming and confirmed patterns)
+                if self._activity_logger:
+                    confidence = self._calculate_signal_confidence(df, pattern_details) if is_tradeable else 0
+                    self._activity_logger.log_pattern_detected(
+                        symbol=symbol,
+                        pattern=pattern_details.get('pattern_name', 'Unknown'),
+                        confidence=confidence if is_tradeable else 0,
+                        rr_ratio=0,  # Will calculate below if tradeable
+                        details={
+                            'status': pattern_status,
+                            'tradeable': is_tradeable,
+                            'current_price': latest_prices_copy.get(symbol, float(df['close'].iloc[-1])),
+                            'distance_to_breakout': pattern_details.get('distance_to_breakout', 0)
+                        }
+                    )
+                
+                # Only proceed with trading logic if pattern is confirmed (not just forming)
+                if not is_tradeable:
+                    logger.info(f"👀 {symbol}: {pattern_details.get('pattern_name')} detected - FORMING (watchlist only)")
+                    continue
+                
+                # 30-point validation (optional, only for tradeable patterns)
                 is_valid = True
                 if self._execution_manager:
                     is_valid = self._execution_manager.validate_trade_entry(df, pattern_details)

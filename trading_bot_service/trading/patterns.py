@@ -52,7 +52,7 @@ class PatternDetector:
         return peaks, troughs
 
     def detect_double_top_bottom(self, data: pd.DataFrame, lookback=30) -> Dict[str, Any]:
-        """Detects Double Top and Double Bottom patterns."""
+        """Detects Double Top and Double Bottom patterns (both forming and confirmed)."""
         if len(data) < lookback: return {}
         recent_data = data.iloc[-lookback:]
 
@@ -65,14 +65,29 @@ class PatternDetector:
 
             if abs(peak1_price - peak2_price) / peak1_price < 0.015: # Peaks are within 1.5%
                 trough_between = recent_data['Low'].iloc[peak1_idx:peak2_idx].min()
-                if data['Close'].iloc[-1] < trough_between:
-                    height = peak1_price - trough_between
+                current_price = data['Close'].iloc[-1]
+                height = peak1_price - trough_between
+                
+                # CONFIRMED: Breakout occurred (price below support)
+                if current_price < trough_between:
                     return {
                         'pattern_name': 'Double Top', 'breakout_direction': 'down',
+                        'pattern_status': 'confirmed', 'tradeable': True,
                         'breakout_price': trough_between, 'duration': lookback,
                         'initial_stop_loss': peak2_price,
                         'calculated_price_target': trough_between - height,
                         'pattern_top_boundary': peak1_price, 'pattern_bottom_boundary': trough_between
+                    }
+                # FORMING: Pattern exists but no breakout yet (watchlist)
+                elif current_price < peak1_price * 1.02:  # Within 2% of peaks
+                    return {
+                        'pattern_name': 'Double Top (Forming)', 'breakout_direction': 'down',
+                        'pattern_status': 'forming', 'tradeable': False,
+                        'breakout_price': trough_between, 'duration': lookback,
+                        'initial_stop_loss': peak2_price,
+                        'calculated_price_target': trough_between - height,
+                        'pattern_top_boundary': peak1_price, 'pattern_bottom_boundary': trough_between,
+                        'current_price': current_price, 'distance_to_breakout': current_price - trough_between
                     }
         
         # Double Bottom
@@ -82,14 +97,29 @@ class PatternDetector:
 
             if abs(trough1_price - trough2_price) / trough1_price < 0.015: # Troughs are within 1.5%
                 peak_between = recent_data['High'].iloc[trough1_idx:trough2_idx].max()
-                if data['Close'].iloc[-1] > peak_between:
-                    height = peak_between - trough1_price
+                current_price = data['Close'].iloc[-1]
+                height = peak_between - trough1_price
+                
+                # CONFIRMED: Breakout occurred (price above resistance)
+                if current_price > peak_between:
                     return {
                         'pattern_name': 'Double Bottom', 'breakout_direction': 'up',
+                        'pattern_status': 'confirmed', 'tradeable': True,
                         'breakout_price': peak_between, 'duration': lookback,
                         'initial_stop_loss': trough2_price,
                         'calculated_price_target': peak_between + height,
                         'pattern_top_boundary': peak_between, 'pattern_bottom_boundary': trough1_price
+                    }
+                # FORMING: Pattern exists but no breakout yet (watchlist)
+                elif current_price > trough1_price * 0.98:  # Within 2% of troughs
+                    return {
+                        'pattern_name': 'Double Bottom (Forming)', 'breakout_direction': 'up',
+                        'pattern_status': 'forming', 'tradeable': False,
+                        'breakout_price': peak_between, 'duration': lookback,
+                        'initial_stop_loss': trough2_price,
+                        'calculated_price_target': peak_between + height,
+                        'pattern_top_boundary': peak_between, 'pattern_bottom_boundary': trough1_price,
+                        'current_price': current_price, 'distance_to_breakout': peak_between - current_price
                     }
         return {}
 

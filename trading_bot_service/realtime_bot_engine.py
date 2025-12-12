@@ -820,7 +820,7 @@ class RealtimeBotEngine:
         checks = {
             'websocket_connected': self.ws_manager and hasattr(self.ws_manager, 'is_connected') and getattr(self.ws_manager, 'is_connected', False),
             'has_prices': len(self.latest_prices) > 0,
-            'has_candles': len(self.candle_data) >= len(self.symbol_tokens) * 0.8,  # At least 80% of symbols
+            'has_candles': len(self.candle_data) >= len(self.symbol_tokens) * 0.5,  # At least 50% of symbols (Angel One API can be slow at market open)
             'has_tokens': len(self.symbol_tokens) > 0,
         }
         

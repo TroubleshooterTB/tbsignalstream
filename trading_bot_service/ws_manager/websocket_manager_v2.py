@@ -129,14 +129,22 @@ class AngelWebSocketV2Manager:
             )
             self._ws_thread.start()
             
-            # Wait for connection (max 10 seconds)
-            timeout = 10
+            # Wait for connection (increased to 30 seconds for Cloud Run)
+            timeout = 30
             start_time = time.time()
+            logger.info(f"⏳ Waiting for WebSocket connection (timeout: {timeout}s)...")
+            
             while not self.is_connected and (time.time() - start_time) < timeout:
+                elapsed = time.time() - start_time
+                if elapsed % 5 < 0.2:  # Log every 5 seconds
+                    logger.info(f"⏳ Still waiting... ({elapsed:.1f}s / {timeout}s)")
                 time.sleep(0.1)
             
             if not self.is_connected:
-                raise Exception("WebSocket connection timeout after 10 seconds")
+                logger.error(f"❌ WebSocket connection timeout after {timeout} seconds")
+                logger.error(f"❌ URL: {self.ws_url}")
+                logger.error(f"❌ Thread alive: {self._ws_thread.is_alive()}")
+                raise Exception(f"WebSocket connection timeout after {timeout} seconds")
             
             logger.info("✅ WebSocket v2 connection established successfully")
             return True
@@ -351,6 +359,9 @@ class AngelWebSocketV2Manager:
     def _on_error(self, ws, error):
         """Called when WebSocket error occurs."""
         logger.error(f"❌ WebSocket error: {error}")
+        logger.error(f"❌ Error type: {type(error).__name__}")
+        import traceback
+        logger.error(f"❌ Traceback: {traceback.format_exc()}")
     
     def _on_close(self, ws, close_status_code, close_msg):
         """Called when WebSocket connection closes."""

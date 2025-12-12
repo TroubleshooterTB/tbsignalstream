@@ -471,6 +471,13 @@ class RealtimeBotEngine:
                     historical_count = len(historical_df)
                     new_count = len(candles)
                     
+                    # FIX timezone mismatch: Remove timezone info from both DataFrames before merging
+                    # Historical data is tz-naive, realtime data is tz-aware (IST)
+                    if historical_df.index.tz is not None:
+                        historical_df.index = historical_df.index.tz_localize(None)
+                    if candles.index.tz is not None:
+                        candles.index = candles.index.tz_localize(None)
+                    
                     # ALWAYS combine historical + new candles
                     combined = pd.concat([historical_df, candles])
                     combined = combined[~combined.index.duplicated(keep='last')]
@@ -485,6 +492,10 @@ class RealtimeBotEngine:
                     self.candle_data[symbol] = combined
                 else:
                     # No historical data - use realtime only
+                    # Remove timezone info for consistency
+                    if candles.index.tz is not None:
+                        candles.index = candles.index.tz_localize(None)
+                    
                     logger.debug(f"📊 {symbol}: No historical data, using {len(candles)} realtime candles")
                     if len(candles) >= 200:
                         candles = self._calculate_indicators(candles)

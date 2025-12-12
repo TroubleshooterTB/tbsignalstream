@@ -51,7 +51,7 @@ class PatternDetector:
         troughs, _ = find_peaks(-data, distance=distance, prominence=prominence)
         return peaks, troughs
 
-    def detect_double_top_bottom(self, data: pd.DataFrame, lookback=30) -> Dict[str, Any]:
+    def detect_double_top_bottom(self, data: pd.DataFrame, lookback=50) -> Dict[str, Any]:
         """Detects Double Top and Double Bottom patterns (both forming and confirmed)."""
         if len(data) < lookback: return {}
         recent_data = data.iloc[-lookback:]
@@ -63,7 +63,7 @@ class PatternDetector:
             peak1_idx, peak2_idx = highs[-2], highs[-1]
             peak1_price, peak2_price = recent_data['High'].iloc[peak1_idx], recent_data['High'].iloc[peak2_idx]
 
-            if abs(peak1_price - peak2_price) / peak1_price < 0.015: # Peaks are within 1.5%
+            if abs(peak1_price - peak2_price) / peak1_price < 0.03: # Peaks are within 3% (relaxed from 1.5%)
                 trough_between = recent_data['Low'].iloc[peak1_idx:peak2_idx].min()
                 current_price = data['Close'].iloc[-1]
                 height = peak1_price - trough_between
@@ -79,7 +79,7 @@ class PatternDetector:
                         'pattern_top_boundary': peak1_price, 'pattern_bottom_boundary': trough_between
                     }
                 # FORMING: Pattern exists but no breakout yet (watchlist)
-                elif current_price < peak1_price * 1.02:  # Within 2% of peaks
+                elif current_price < peak1_price * 1.05:  # Within 5% of peaks (relaxed from 2%)
                     return {
                         'pattern_name': 'Double Top (Forming)', 'breakout_direction': 'down',
                         'pattern_status': 'forming', 'tradeable': False,
@@ -95,7 +95,7 @@ class PatternDetector:
             trough1_idx, trough2_idx = lows[-2], lows[-1]
             trough1_price, trough2_price = recent_data['Low'].iloc[trough1_idx], recent_data['Low'].iloc[trough2_idx]
 
-            if abs(trough1_price - trough2_price) / trough1_price < 0.015: # Troughs are within 1.5%
+            if abs(trough1_price - trough2_price) / trough1_price < 0.03: # Troughs are within 3% (relaxed from 1.5%)
                 peak_between = recent_data['High'].iloc[trough1_idx:trough2_idx].max()
                 current_price = data['Close'].iloc[-1]
                 height = peak_between - trough1_price
@@ -111,7 +111,7 @@ class PatternDetector:
                         'pattern_top_boundary': peak_between, 'pattern_bottom_boundary': trough1_price
                     }
                 # FORMING: Pattern exists but no breakout yet (watchlist)
-                elif current_price > trough1_price * 0.98:  # Within 2% of troughs
+                elif current_price > trough1_price * 0.95:  # Within 5% of troughs (relaxed from 2%)
                     return {
                         'pattern_name': 'Double Bottom (Forming)', 'breakout_direction': 'up',
                         'pattern_status': 'forming', 'tradeable': False,
@@ -136,7 +136,7 @@ class PatternDetector:
         flag_data = data.iloc[-flag_lookback:]
         
         # Bull Flag
-        if price_change > 0 and pole_height / pole_data['Close'].iloc[0] > 0.08: # At least 8% pole move
+        if price_change > 0 and pole_height / pole_data['Close'].iloc[0] > 0.04: # At least 4% pole move (relaxed from 8%)
             highs, lows = self._get_swing_points(flag_data['High'], 3, 0.005)
             if len(highs) > 1:
                 slope, _, _, _, _ = np.polyfit(highs, flag_data['High'].iloc[highs], 1)
@@ -151,7 +151,7 @@ class PatternDetector:
                             'pattern_top_boundary': resistance_line, 'pattern_bottom_boundary': flag_data['Low'].min()
                         }
         # Bear Flag
-        if price_change < 0 and pole_height / pole_data['Close'].iloc[0] > 0.08: # At least 8% pole move
+        if price_change < 0 and pole_height / pole_data['Close'].iloc[0] > 0.04: # At least 4% pole move (relaxed from 8%)
             highs, lows = self._get_swing_points(flag_data['Low'], 3, 0.005)
             if len(lows) > 1:
                 slope, _, _, _, _ = np.polyfit(lows, flag_data['Low'].iloc[lows], 1)

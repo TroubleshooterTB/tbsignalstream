@@ -1167,6 +1167,7 @@ class RealtimeBotEngine:
                 # Pattern detection (detects both forming and confirmed patterns)
                 pattern_details = self._pattern_detector.scan(df)
                 if not pattern_details:
+                    logger.info(f"[DEBUG] {symbol}: No pattern detected this cycle.")
                     continue
                 
                 # Check if pattern is tradeable (confirmed breakout) or just forming (watchlist)

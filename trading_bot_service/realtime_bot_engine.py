@@ -774,14 +774,14 @@ class RealtimeBotEngine:
             logger.info(f"📊 Fetching previous trading session: {from_date.strftime('%Y-%m-%d %H:%M')} to {to_date.strftime('%Y-%m-%d %H:%M')}")
             logger.info(f"📊 Expected ~375 candles (full session) for INSTANT signal generation!")
         else:
-            # After market open: Fetch yesterday's session + today's live candles
+            # After market open: Fetch ONLY yesterday's session (realtime will build today's candles)
             yesterday = now - timedelta(days=1)
             while yesterday.weekday() >= 5:  # Handle weekends
                 yesterday -= timedelta(days=1)
-            to_date = now  # Current time (includes today's candles)
+            to_date = yesterday.replace(hour=15, minute=30, second=0, microsecond=0)  # Yesterday 3:30 PM
             from_date = yesterday.replace(hour=9, minute=15, second=0, microsecond=0)  # Yesterday 9:15 AM
-            logger.info(f"📊 Fetching yesterday + today: {from_date.strftime('%Y-%m-%d %H:%M')} to {to_date.strftime('%Y-%m-%d %H:%M')}")
-            logger.info(f"📊 Expected 375+ candles for immediate trading!")
+            logger.info(f"📊 Fetching previous trading session only: {from_date.strftime('%Y-%m-%d %H:%M')} to {to_date.strftime('%Y-%m-%d %H:%M')}")
+            logger.info(f"📊 Expected ~375 candles (realtime will add today's candles)")
         
         success_count = 0
         fail_count = 0

@@ -464,11 +464,14 @@ class RealtimeBotEngine:
                 # But resampled candles have lowercase: 'open', 'high', 'low', 'close', 'volume'
                 candles.columns = [col.capitalize() for col in candles.columns]
                 
+                # DEBUG: Check if historical data exists
+                has_historical = symbol in self.candle_data
+                historical_count = len(self.candle_data[symbol]) if has_historical else 0
+                
                 # CRITICAL FIX: APPEND new candles to historical data instead of replacing
                 # If we have historical data, merge it with new realtime candles
                 if symbol in self.candle_data and len(self.candle_data[symbol]) > 0:
                     historical_df = self.candle_data[symbol]
-                    historical_count = len(historical_df)
                     new_count = len(candles)
                     
                     # FIX timezone mismatch: Remove timezone info from both DataFrames before merging
@@ -483,7 +486,7 @@ class RealtimeBotEngine:
                     combined = combined[~combined.index.duplicated(keep='last')]
                     combined = combined.sort_index()
                     
-                    logger.debug(f"📊 {symbol}: Merged {historical_count} historical + {new_count} new = {len(combined)} total candles")
+                    logger.info(f"📊 {symbol}: Merged {historical_count} historical + {new_count} new = {len(combined)} total candles")
                     
                     # Calculate indicators on FULL dataset (historical + new)
                     if len(combined) >= 200:
@@ -496,7 +499,7 @@ class RealtimeBotEngine:
                     if candles.index.tz is not None:
                         candles.index = candles.index.tz_localize(None)
                     
-                    logger.debug(f"📊 {symbol}: No historical data, using {len(candles)} realtime candles")
+                    logger.info(f"📊 {symbol}: No historical data (had {historical_count}), using {len(candles)} realtime candles")
                     if len(candles) >= 200:
                         candles = self._calculate_indicators(candles)
                     self.candle_data[symbol] = candles

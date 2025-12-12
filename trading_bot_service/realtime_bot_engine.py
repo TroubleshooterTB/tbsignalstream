@@ -466,12 +466,17 @@ class RealtimeBotEngine:
                 
                 # CRITICAL FIX: APPEND new candles to historical data instead of replacing
                 # If we have historical data, merge it with new realtime candles
-                if symbol in self.candle_data and len(self.candle_data[symbol]) > len(candles):
+                if symbol in self.candle_data and len(self.candle_data[symbol]) > 0:
                     historical_df = self.candle_data[symbol]
-                    # Combine historical + new candles, remove duplicates, keep latest
+                    historical_count = len(historical_df)
+                    new_count = len(candles)
+                    
+                    # ALWAYS combine historical + new candles
                     combined = pd.concat([historical_df, candles])
                     combined = combined[~combined.index.duplicated(keep='last')]
                     combined = combined.sort_index()
+                    
+                    logger.debug(f"📊 {symbol}: Merged {historical_count} historical + {new_count} new = {len(combined)} total candles")
                     
                     # Calculate indicators on FULL dataset (historical + new)
                     if len(combined) >= 200:
@@ -479,7 +484,8 @@ class RealtimeBotEngine:
                     
                     self.candle_data[symbol] = combined
                 else:
-                    # First run or realtime has more candles - use realtime only
+                    # No historical data - use realtime only
+                    logger.debug(f"📊 {symbol}: No historical data, using {len(candles)} realtime candles")
                     if len(candles) >= 200:
                         candles = self._calculate_indicators(candles)
                     self.candle_data[symbol] = candles

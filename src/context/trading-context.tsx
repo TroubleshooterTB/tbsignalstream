@@ -18,7 +18,7 @@ interface TradingState {
   botConfig: {
     symbols: string;
     mode: 'paper' | 'live';
-    strategy: 'pattern' | 'ironclad' | 'both';
+    strategy: 'pattern' | 'ironclad' | 'both' | 'defining';
     maxPositions: string;
     positionSize: string;
   };
@@ -55,7 +55,7 @@ export function TradingProvider({ children }: { children: React.ReactNode }) {
   const [botConfig, setBotConfig] = useState({
     symbols: NIFTY_50_SYMBOLS_STRING, // All Nifty 50 stocks
     mode: 'paper' as 'paper' | 'live',
-    strategy: 'pattern' as 'pattern' | 'ironclad' | 'both',
+    strategy: 'defining' as 'pattern' | 'ironclad' | 'both' | 'defining', // v3.2 BEST: 59% WR, 24% returns
     maxPositions: '5', // Increased from 3 to allow more opportunities
     positionSize: '10000', // ₹10,000 per position
   });

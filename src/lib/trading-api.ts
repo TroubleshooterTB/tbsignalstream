@@ -144,7 +144,7 @@ export const tradingBotApi = {
   start: async (config: {
     symbols: string[];
     mode?: 'paper' | 'live';
-    strategy?: 'pattern' | 'ironclad' | 'both';
+    strategy?: 'pattern' | 'ironclad' | 'both' | 'defining';
     maxPositions?: number;
     positionSize?: number;
   }) => {

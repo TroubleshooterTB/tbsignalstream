@@ -1,0 +1,39 @@
+================================================================================
+v1.9 LOSING TRADES ANALYSIS SUMMARY
+================================================================================
+
+TOP 5 CRITICAL PATTERNS:
+
+1. WORST PERFORMING SYMBOLS:
+               Loser_Count  Total_Loss  Avg_Loss  Winner_Count  Total_Win  Avg_Win  Win_Rate  Net_PnL
+symbol                                                                                               
+KOTAKBANK-EQ             4    -3686.30   -921.57             2    3409.60  1704.80     33.33  -276.70
+TCS-EQ                   2    -2056.60  -1028.30             1     556.00   556.00     33.33 -1500.60
+HDFCBANK-EQ             17   -16480.85   -969.46            10   18870.20  1887.02     37.04  2389.35
+BHARTIARTL-EQ           15   -16552.15  -1103.48             9   17328.85  1925.43     37.50   776.70
+HINDUNILVR-EQ           10    -8244.40   -824.44             6   11613.20  1935.53     37.50  3368.80
+
+2. WORST HOURS OF DAY:
+      Loser_Count  Total_Loss  Avg_Loss  Winner_Count  Total_Win  Avg_Win  Win_Rate
+Hour                                                                               
+13             24    -25305.5   -1054.4             8   17478.28  2184.79      25.0
+
+3. STOP LOSS HIT RATE:
+           Trades  Total_Loss  Avg_Loss  Percentage
+Exit_Type                                          
+EOD Close      54    -51503.0   -953.76       100.0
+
+4. WORST DAYS:
+            Loser_Count  Total_Loss  Winner_Count  Total_Win  Win_Rate
+Date                                                                  
+2024-11-18            2    -2195.46           0.0       0.00      0.00
+2024-11-21            2    -1164.95           0.0       0.00      0.00
+2024-11-22            5    -5720.05           2.0    2791.95     28.57
+2024-11-29            7    -8194.80           4.0    8968.70     36.36
+2024-11-13           12   -10650.59           7.0   15114.02     36.84
+
+5. DIRECTIONAL BIAS:
+           Loser_Count  Total_Loss  Avg_Loss  Winner_Count  Total_Win  Avg_Win  Win_Rate
+direction                                                                               
+LONG                21   -21784.13  -1037.34            12   24418.57  2034.88     36.36
+SHORT               33   -29718.87   -900.57            24   43459.78  1810.82     42.11

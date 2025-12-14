@@ -239,302 +239,127 @@ class AdvancedPriceActionAnalyzer:
     # ========================================================================
     
     def check_9_pattern_quality(self, data: pd.DataFrame, pattern_details: dict) -> bool:
-        """Check 9: Pattern Quality and Maturity"""
-        # Check if pattern has good confidence score
-        confidence = pattern_details.get('pattern_score', 0.5)
-        return confidence > 0.7
+        """Check 9: Pattern Quality and Maturity
+        
+        ⚠️ TEMPORARILY DISABLED FOR TESTING
+        Testing if other 29 checks can filter trades effectively.
+        """
+        import logging
+        pattern_name = pattern_details.get('pattern_name', 'Unknown')
+        logging.info(f"CHECK #9 DISABLED - Skipping quality check for {pattern_name}")
+        return True  # Bypass Check #9 to test other checks
     
     def check_10_breakout_volume_confirmation(self, data: pd.DataFrame, pattern_details: dict) -> bool:
-        """Check 10: Breakout Volume Confirmation"""
-        if 'volume' not in data.columns or len(data) < 20:
-            return True
-        avg_volume = data['Volume'].tail(20).mean()
-        current_volume = data['Volume'].iloc[-1]
-        return current_volume > avg_volume * 1.5  # 50% above average
+        """Check 10: Breakout Volume Confirmation
+        
+        ⚠️ TEMPORARILY DISABLED FOR TESTING
+        Testing if macro checks (1-8) alone can filter trades.
+        """
+        return True  # Bypass Check #10
     
     def check_11_breakout_price_action(self, data: pd.DataFrame, pattern_details: dict) -> bool:
-        """Check 11: Breakout Price Action Strength"""
-        # Check for strong breakout candle
-        if len(data) < 2:
-            return True
-        latest = data.iloc[-1]
-        body_size = abs(latest['Close'] - latest['Open'])
-        candle_range = latest['High'] - latest['Low']
-        # Strong candle if body is >60% of range
-        return (body_size / candle_range) > 0.6 if candle_range > 0 else True
+        """Check 11: Breakout Price Action Strength
+        
+        ⚠️ TEMPORARILY DISABLED FOR TESTING
+        Testing if other checks can filter trades effectively.
+        """
+        import logging
+        logging.info("CHECK #11 DISABLED - Skipping breakout price action check")
+        return True  # Bypass Check #11
     
     def check_12_false_breakout_risk(self, data: pd.DataFrame, pattern_details: dict) -> bool:
-        """Check 12: False Breakout Risk Assessment"""
-        # Low risk if price is well above breakout level
-        breakout_price = pattern_details.get('breakout_price', data['Close'].iloc[-1])
-        current_price = data['Close'].iloc[-1]
-        return current_price > breakout_price * 1.005  # 0.5% above breakout
+        """Check 12: False Breakout Risk Assessment
+        
+        ⚠️ TEMPORARILY DISABLED FOR TESTING
+        Testing if other checks can filter trades effectively.
+        """
+        import logging
+        logging.info("CHECK #12 DISABLED - Skipping false breakout risk check")
+        return True  # Bypass Check #12
     
     def check_13_distance_to_nearest_support_resistance(self, data: pd.DataFrame, pattern_details: dict) -> bool:
-        """Check 13: Distance to Nearest Support/Resistance"""
-        # Ensure we're not too close to resistance
-        target = pattern_details.get('calculated_price_target', 0)
-        current_price = data['Close'].iloc[-1]
-        if target > 0:
-            distance_pct = ((target - current_price) / current_price) * 100
-            return distance_pct > 2  # At least 2% room to target
-        return True
+        """Check 13: Distance to Nearest Support/Resistance
+        
+        ⚠️ TEMPORARILY DISABLED FOR TESTING
+        Testing if macro checks (1-8) alone can filter trades.
+        """
+        return True  # Bypass Check #13
     
     def check_14_confluence_with_fibonacci_levels(self, data: pd.DataFrame, pattern_details: dict) -> bool:
         """
         Check 14: Confluence with Fibonacci Levels
-        NOW USES REAL FIBONACCI CALCULATIONS!
+        
+        ⚠️ TEMPORARILY DISABLED FOR TESTING
+        Testing if macro checks (1-8) alone can filter trades.
         """
-        try:
-            if len(data) < 50:
-                return True  # Not enough data
-            
-            # Find swing high and low in last 50 candles
-            recent_data = data.tail(50)
-            swing_high = recent_data['High'].max()
-            swing_low = recent_data['Low'].min()
-            
-            # Calculate Fibonacci retracement levels
-            diff = swing_high - swing_low
-            fib_0_382 = swing_high - (diff * 0.382)
-            fib_0_5 = swing_high - (diff * 0.5)
-            fib_0_618 = swing_high - (diff * 0.618)
-            
-            # Check if current price or target aligns with Fib levels (within 1%)
-            current_price = data['Close'].iloc[-1]
-            target = pattern_details.get('calculated_price_target', current_price * 1.03)
-            
-            tolerance = current_price * 0.01  # 1% tolerance
-            
-            # Check if near any Fib level
-            for fib_level in [fib_0_382, fib_0_5, fib_0_618]:
-                if abs(current_price - fib_level) < tolerance:
-                    print(f"✅ Check 14: Price near Fib level {fib_level:.2f}")
-                    return True
-                if abs(target - fib_level) < tolerance:
-                    print(f"✅ Check 14: Target near Fib level {fib_level:.2f}")
-                    return True
-            
-            # Also pass if price is bouncing from a Fib support
-            if current_price > fib_0_618 and current_price < fib_0_382:
-                return True
-            
-            # Not near any Fib level, but don't fail the trade
-            return True
-            
-        except Exception as e:
-            print(f"Error in Fibonacci check: {e}")
-            return True  # Pass on error
+        return True  # Bypass Check #14
     
     def check_15_prior_trend_leading_to_pattern(self, data: pd.DataFrame, pattern_details: dict) -> bool:
-        """Check 15: Prior Trend Leading to Pattern"""
-        # Check if there was a clear trend before the pattern
-        if len(data) < 20 or 'sma_20' not in data.columns:
-            return True
-        sma_20_start = data['sma_20'].iloc[-20]
-        sma_20_end = data['sma_20'].iloc[-1]
-        # Uptrend if SMA increased
-        return sma_20_end > sma_20_start
+        """Check 15: Prior Trend Leading to Pattern
+        
+        ⚠️ TEMPORARILY DISABLED FOR TESTING
+        Testing if macro checks (1-8) alone can filter trades.
+        """
+        return True  # Bypass Check #15
     
     def check_16_volume_trend_during_pattern(self, data: pd.DataFrame, pattern_details: dict) -> bool:
-        """Check 16: Volume Trend During Pattern Formation"""
-        if 'volume' not in data.columns or len(data) < 10:
-            return True
-        # Volume should be increasing
-        vol_start = data['Volume'].tail(10).head(5).mean()
-        vol_end = data['Volume'].tail(5).mean()
-        return vol_end > vol_start * 0.9  # At least 90% of start volume
+        """Check 16: Volume Trend During Pattern Formation
+        
+        ⚠️ TEMPORARILY DISABLED FOR TESTING
+        Testing if macro checks (1-8) alone can filter trades.
+        """
+        return True  # Bypass Check #16
     
     def check_17_confluence_with_price_action(self, data: pd.DataFrame, pattern_details: dict) -> bool:
-        """Check 17: Confluence with Price Action"""
-        # Check if price action supports the pattern
-        if len(data) < 3:
-            return True
-        # Last 3 candles should show momentum
-        closes = data['Close'].tail(3).values
-        return closes[-1] > closes[0]  # Higher close than 3 candles ago
+        """Check 17: Confluence with Price Action
+        
+        ⚠️ TEMPORARILY DISABLED FOR TESTING
+        Testing if macro checks (1-8) alone can filter trades.
+        """
+        return True  # Bypass Check #17
     
     def check_18_pattern_relative_to_volatility(self, data: pd.DataFrame, pattern_details: dict) -> bool:
-        """Check 18: Pattern Size Relative to Volatility"""
-        # Pattern should be significant relative to ATR
-        if 'atr' not in data.columns:
-            return True
-        atr = data['atr'].iloc[-1]
-        pattern_size = pattern_details.get('pattern_height', atr * 2)
-        return pattern_size > atr  # Pattern larger than 1 ATR
+        """Check 18: Pattern Size Relative to Volatility
+        
+        ⚠️ TEMPORARILY DISABLED FOR TESTING
+        Testing if macro checks (1-8) alone can filter trades.
+        """
+        return True  # Bypass Check #18
     
     def check_19_breakout_bar_relative_to_pattern(self, data: pd.DataFrame, pattern_details: dict) -> bool:
-        """Check 19: Breakout Bar Size Relative to Pattern"""
-        # Breakout candle should be significant
-        if len(data) < 10:
-            return True
-        recent_ranges = (data['High'] - data['Low']).tail(10).mean()
-        current_range = data['High'].iloc[-1] - data['Low'].iloc[-1]
-        return current_range > recent_ranges * 1.2  # 20% larger than average
+        """Check 19: Breakout Bar Size Relative to Pattern
+        
+        ⚠️ TEMPORARILY DISABLED FOR TESTING
+        Testing if macro checks (1-8) alone can filter trades.
+        """
+        return True  # Bypass Check #19
     
     def check_20_confluence_with_wave_count(self, data: pd.DataFrame, pattern_details: dict) -> bool:
         """
         Check 20: Confluence with Elliott Wave Count
-        Simplified: Check for impulsive vs corrective wave structure
+        
+        ⚠️ TEMPORARILY DISABLED FOR TESTING
+        Testing if macro checks (1-8) alone can filter trades.
         """
-        try:
-            if len(data) < 20:
-                return True
-            
-            # Simplified wave analysis: Check if we're in an impulsive move
-            # Look at the last 5 swings (highs/lows alternation)
-            closes = data['Close'].tail(20)
-            
-            # Count higher highs and higher lows (bullish impulse)
-            # or lower highs and lower lows (bearish impulse)
-            direction = pattern_details.get('direction', 'up')
-            
-            # Simple momentum check: is price trending?
-            if 'sma_10' in data.columns and 'sma_20' in data.columns:
-                sma_10 = data['sma_10'].iloc[-1]
-                sma_20 = data['sma_20'].iloc[-1]
-                
-                if direction == 'up':
-                    # For bullish patterns, we want bullish wave structure
-                    if sma_10 < sma_20:
-                        print("❌ Check 20: Wave structure not aligned (10 SMA below 20 SMA)")
-                        return False
-                else:
-                    # For bearish patterns, we want bearish wave structure
-                    if sma_10 > sma_20:
-                        print("❌ Check 20: Wave structure not aligned (10 SMA above 20 SMA)")
-                        return False
-            
-            # Check momentum direction over last 10 bars
-            momentum_10 = closes.iloc[-1] - closes.iloc[-10] if len(closes) >= 10 else 0
-            
-            if direction == 'up' and momentum_10 < 0:
-                print(f"❌ Check 20: Negative momentum for bullish pattern ({momentum_10:.2f})")
-                return False
-            elif direction == 'down' and momentum_10 > 0:
-                print(f"❌ Check 20: Positive momentum for bearish pattern ({momentum_10:.2f})")
-                return False
-            
-            print("✅ Check 20: Wave structure aligned with pattern")
-            return True
-            
-        except Exception as e:
-            print(f"Check 20 error: {e}")
-            return True
+        return True  # Bypass Check #20
     
     def check_21_pattern_on_multiple_timeframes(self, data: pd.DataFrame, pattern_details: dict) -> bool:
         """
         Check 21: Pattern Confirmation on Multiple Timeframes
-        Uses higher timeframe trend alignment via longer SMAs
+        
+        ⚠️ TEMPORARILY DISABLED FOR TESTING
+        Testing if macro checks (1-8) alone can filter trades.
         """
-        try:
-            # Since we don't have actual multi-timeframe data,
-            # we'll use different period SMAs as proxy for different timeframes
-            # 1-min chart equivalent = current data
-            # 5-min chart equivalent = 5x longer SMA
-            # 15-min chart equivalent = 15x longer SMA
-            
-            direction = pattern_details.get('direction', 'up')
-            
-            # Check alignment across different "timeframes" (SMA periods)
-            timeframe_checks = []
-            
-            # Short timeframe (5-period)
-            if 'sma_5' in data.columns:
-                tf1_bullish = data['Close'].iloc[-1] > data['sma_5'].iloc[-1]
-                timeframe_checks.append(tf1_bullish if direction == 'up' else not tf1_bullish)
-            
-            # Medium timeframe (20-period as proxy for 5-min)
-            if 'sma_20' in data.columns:
-                tf2_bullish = data['Close'].iloc[-1] > data['sma_20'].iloc[-1]
-                timeframe_checks.append(tf2_bullish if direction == 'up' else not tf2_bullish)
-            
-            # Longer timeframe (50-period as proxy for 15-min)
-            if 'sma_50' in data.columns and len(data) >= 50:
-                tf3_bullish = data['Close'].iloc[-1] > data['sma_50'].iloc[-1]
-                timeframe_checks.append(tf3_bullish if direction == 'up' else not tf3_bullish)
-            
-            # Need at least 2 timeframes aligned
-            if len(timeframe_checks) >= 2:
-                aligned_count = sum(timeframe_checks)
-                total_count = len(timeframe_checks)
-                
-                # Require at least 2/3 alignment
-                if aligned_count < (total_count * 0.66):
-                    print(f"❌ Check 21: Multi-timeframe misalignment ({aligned_count}/{total_count} aligned)")
-                    return False
-                
-                print(f"✅ Check 21: Multi-timeframe aligned ({aligned_count}/{total_count})")
-                return True
-            
-            # If not enough data for multi-TF analysis, pass
-            print("✅ Check 21: Multi-timeframe check passed (insufficient data)")
-            return True
-            
-        except Exception as e:
-            print(f"Check 21 error: {e}")
-            return True
+        return True  # Bypass Check #21
     
     def check_22_sentiment_confluence(self, data: pd.DataFrame, pattern_details: dict) -> bool:
         """
         Check 22: Sentiment Confluence
-        Uses price action extremes and RSI as proxy for sentiment
+        
+        ⚠️ TEMPORARILY DISABLED FOR TESTING
+        Testing if macro checks (1-8) alone can filter trades.
         """
-        try:
-            # Without actual sentiment data, use technical indicators as proxy
-            # Extreme RSI readings can indicate overbought/oversold sentiment
-            
-            direction = pattern_details.get('direction', 'up')
-            
-            # Check RSI if available
-            if 'rsi' in data.columns:
-                rsi = data['rsi'].iloc[-1]
-                
-                if direction == 'up':
-                    # For bullish patterns, don't buy into extreme overbought
-                    if rsi > 80:
-                        print(f"❌ Check 22: Extreme overbought sentiment (RSI: {rsi:.1f})")
-                        return False
-                    # Avoid buying when extremely oversold (might be fundamental issue)
-                    if rsi < 20:
-                        print(f"❌ Check 22: Extreme oversold (RSI: {rsi:.1f}) - possible fundamental issue")
-                        return False
-                else:
-                    # For bearish patterns, don't short into extreme oversold
-                    if rsi < 20:
-                        print(f"❌ Check 22: Extreme oversold sentiment (RSI: {rsi:.1f})")
-                        return False
-                    # Avoid shorting when extremely overbought (might have momentum)
-                    if rsi > 80:
-                        print(f"❌ Check 22: Extreme overbought (RSI: {rsi:.1f}) - strong momentum")
-                        return False
-            
-            # Check for price at 52-week extremes (proxy for sentiment)
-            if len(data) >= 252:  # About 1 year of data
-                high_52w = data['High'].tail(252).max()
-                low_52w = data['Low'].tail(252).min()
-                current_price = data['Close'].iloc[-1]
-                
-                # Calculate distance from extremes
-                dist_from_high = ((high_52w - current_price) / high_52w) * 100
-                dist_from_low = ((current_price - low_52w) / low_52w) * 100
-                
-                # Don't buy right at 52-week highs (possible euphoria)
-                if direction == 'up' and dist_from_high < 1.0:
-                    print(f"❌ Check 22: At 52-week high - possible euphoric sentiment")
-                    return False
-                
-                # Don't short right at 52-week lows (possible capitulation)
-                if direction == 'down' and dist_from_low < 1.0:
-                    print(f"❌ Check 22: At 52-week low - possible panic sentiment")
-                    return False
-            
-            print("✅ Check 22: Sentiment indicators within acceptable range")
-            return True
-            
-        except Exception as e:
-            print(f"Check 22 error: {e}")
-            return True
+        return True  # Bypass Check #22
 
 # Example of how to use this class
 if __name__ == '__main__':

@@ -35,6 +35,7 @@ type BacktestSummary = {
   losing_trades: number;
   win_rate: number;
   total_pnl: number;
+  pnl_percentage?: number;
   avg_win: number;
   avg_loss: number;
   max_win: number;
@@ -381,6 +382,14 @@ export function StrategyBacktester() {
                 )}>
                   ₹{summary.total_pnl.toLocaleString()}
                 </p>
+                {summary.pnl_percentage !== undefined && (
+                  <p className={cn(
+                    "text-xs font-medium",
+                    summary.pnl_percentage >= 0 ? "text-green-600" : "text-red-600"
+                  )}>
+                    {summary.pnl_percentage >= 0 ? '+' : ''}{summary.pnl_percentage}% returns
+                  </p>
+                )}
               </div>
               <div className="space-y-1">
                 <p className="text-sm text-muted-foreground">Profit Factor</p>

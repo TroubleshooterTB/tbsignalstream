@@ -1,0 +1,3 @@
+symbol,entry_time,exit_time,entry_price,exit_price,quantity,pattern,pnl,pnl_pct,exit_reason,confidence,rr_ratio
+ADANIPORTS-EQ,2025-12-12 14:15:00+05:30,2025-12-12 14:30:00+05:30,1526.0,1523.5,100,Ascending Triangle,-554.9500000000116,-0.36329987181888335,stop_loss,76.9988125865822,6.490214672434989
+INDUSINDBK-EQ,2025-12-12 15:15:00+05:30,2025-12-12 15:15:00+05:30,845.75,845.75,100,Symmetrical Triangle,-169.14999999999418,-0.19980019980019295,end_of_backtest,72.0,6.001757756100969

@@ -44,52 +44,92 @@ class PatternDetector:
                 return pattern_details
         return {}
 
-    def _get_swing_points(self, data: pd.Series, distance=5, prominence_factor=0.015):
-        """Utility to find swing highs and lows."""
-        prominence = data.mean() * prominence_factor
-        peaks, _ = find_peaks(data, distance=distance, prominence=prominence)
-        troughs, _ = find_peaks(-data, distance=distance, prominence=prominence)
+    def _get_swing_points(self, data: pd.Series, distance=5, prominence_factor=None):
+        """
+        Utility to find swing highs and lows.
+        
+        Args:
+            data: Price series (High or Low)
+            distance: Minimum candles between peaks (default 5 for 1-min intraday)
+            prominence_factor: DEPRECATED - not used for intraday detection
+        """
+        # For intraday 1-minute data, use distance-only detection (no prominence)
+        # This finds local peaks/troughs without requiring specific height
+        peaks, _ = find_peaks(data, distance=distance)
+        troughs, _ = find_peaks(-data, distance=distance)
         return peaks, troughs
 
-    def detect_double_top_bottom(self, data: pd.DataFrame, lookback=30) -> Dict[str, Any]:
-        """Detects Double Top and Double Bottom patterns."""
+    def detect_double_top_bottom(self, data: pd.DataFrame, lookback=50) -> Dict[str, Any]:
+        """Detects Double Top and Double Bottom patterns (both forming and confirmed)."""
         if len(data) < lookback: return {}
         recent_data = data.iloc[-lookback:]
 
-        highs, lows = self._get_swing_points(recent_data['High'])
+        # Find swing highs and lows separately
+        high_peaks, _ = self._get_swing_points(recent_data['High'])
+        _, low_troughs = self._get_swing_points(recent_data['Low'])
         
         # Double Top
-        if len(highs) >= 2:
-            peak1_idx, peak2_idx = highs[-2], highs[-1]
+        if len(high_peaks) >= 2:
+            peak1_idx, peak2_idx = high_peaks[-2], high_peaks[-1]
             peak1_price, peak2_price = recent_data['High'].iloc[peak1_idx], recent_data['High'].iloc[peak2_idx]
 
-            if abs(peak1_price - peak2_price) / peak1_price < 0.015: # Peaks are within 1.5%
+            if abs(peak1_price - peak2_price) / peak1_price < 0.03: # Peaks are within 3% (relaxed from 1.5%)
                 trough_between = recent_data['Low'].iloc[peak1_idx:peak2_idx].min()
-                if data['Close'].iloc[-1] < trough_between:
-                    height = peak1_price - trough_between
+                current_price = data['Close'].iloc[-1]
+                height = peak1_price - trough_between
+                
+                # CONFIRMED: Breakout occurred (price below support)
+                if current_price < trough_between:
                     return {
                         'pattern_name': 'Double Top', 'breakout_direction': 'down',
+                        'pattern_status': 'confirmed', 'tradeable': True,
                         'breakout_price': trough_between, 'duration': lookback,
                         'initial_stop_loss': peak2_price,
                         'calculated_price_target': trough_between - height,
                         'pattern_top_boundary': peak1_price, 'pattern_bottom_boundary': trough_between
                     }
+                # FORMING: Pattern exists but no breakout yet (watchlist)
+                elif current_price < peak1_price * 1.05:  # Within 5% of peaks (relaxed from 2%)
+                    return {
+                        'pattern_name': 'Double Top (Forming)', 'breakout_direction': 'down',
+                        'pattern_status': 'forming', 'tradeable': False,
+                        'breakout_price': trough_between, 'duration': lookback,
+                        'initial_stop_loss': peak2_price,
+                        'calculated_price_target': trough_between - height,
+                        'pattern_top_boundary': peak1_price, 'pattern_bottom_boundary': trough_between,
+                        'current_price': current_price, 'distance_to_breakout': current_price - trough_between
+                    }
         
         # Double Bottom
-        if len(lows) >= 2:
-            trough1_idx, trough2_idx = lows[-2], lows[-1]
+        if len(low_troughs) >= 2:
+            trough1_idx, trough2_idx = low_troughs[-2], low_troughs[-1]
             trough1_price, trough2_price = recent_data['Low'].iloc[trough1_idx], recent_data['Low'].iloc[trough2_idx]
 
-            if abs(trough1_price - trough2_price) / trough1_price < 0.015: # Troughs are within 1.5%
+            if abs(trough1_price - trough2_price) / trough1_price < 0.03: # Troughs are within 3% (relaxed from 1.5%)
                 peak_between = recent_data['High'].iloc[trough1_idx:trough2_idx].max()
-                if data['Close'].iloc[-1] > peak_between:
-                    height = peak_between - trough1_price
+                current_price = data['Close'].iloc[-1]
+                height = peak_between - trough1_price
+                
+                # CONFIRMED: Breakout occurred (price above resistance)
+                if current_price > peak_between:
                     return {
                         'pattern_name': 'Double Bottom', 'breakout_direction': 'up',
+                        'pattern_status': 'confirmed', 'tradeable': True,
                         'breakout_price': peak_between, 'duration': lookback,
                         'initial_stop_loss': trough2_price,
                         'calculated_price_target': peak_between + height,
                         'pattern_top_boundary': peak_between, 'pattern_bottom_boundary': trough1_price
+                    }
+                # FORMING: Pattern exists but no breakout yet (watchlist)
+                elif current_price > trough1_price * 0.95:  # Within 5% of troughs (relaxed from 2%)
+                    return {
+                        'pattern_name': 'Double Bottom (Forming)', 'breakout_direction': 'up',
+                        'pattern_status': 'forming', 'tradeable': False,
+                        'breakout_price': peak_between, 'duration': lookback,
+                        'initial_stop_loss': trough2_price,
+                        'calculated_price_target': peak_between + height,
+                        'pattern_top_boundary': peak_between, 'pattern_bottom_boundary': trough1_price,
+                        'current_price': current_price, 'distance_to_breakout': peak_between - current_price
                     }
         return {}
 
@@ -106,7 +146,7 @@ class PatternDetector:
         flag_data = data.iloc[-flag_lookback:]
         
         # Bull Flag
-        if price_change > 0 and pole_height / pole_data['Close'].iloc[0] > 0.08: # At least 8% pole move
+        if price_change > 0 and pole_height / pole_data['Close'].iloc[0] > 0.04: # At least 4% pole move (relaxed from 8%)
             highs, lows = self._get_swing_points(flag_data['High'], 3, 0.005)
             if len(highs) > 1:
                 slope, _, _, _, _ = np.polyfit(highs, flag_data['High'].iloc[highs], 1)
@@ -121,7 +161,7 @@ class PatternDetector:
                             'pattern_top_boundary': resistance_line, 'pattern_bottom_boundary': flag_data['Low'].min()
                         }
         # Bear Flag
-        if price_change < 0 and pole_height / pole_data['Close'].iloc[0] > 0.08: # At least 8% pole move
+        if price_change < 0 and pole_height / pole_data['Close'].iloc[0] > 0.04: # At least 4% pole move (relaxed from 8%)
             highs, lows = self._get_swing_points(flag_data['Low'], 3, 0.005)
             if len(lows) > 1:
                 slope, _, _, _, _ = np.polyfit(lows, flag_data['Low'].iloc[lows], 1)

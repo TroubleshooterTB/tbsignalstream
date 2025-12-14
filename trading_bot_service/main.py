@@ -731,6 +731,7 @@ def run_backtest():
         from run_backtest_defining_order import run_backtest as execute_backtest
         
         # Run backtest (this is synchronous and may take time)
+        logger.info("Executing backtest...")
         results = execute_backtest(
             start_date=start_date,
             end_date=end_date,
@@ -739,19 +740,28 @@ def run_backtest():
             capital=capital
         )
         
+        logger.info(f"Backtest completed. Results type: {type(results)}, Keys: {results.keys() if isinstance(results, dict) else 'N/A'}")
+        logger.info(f"Total trades in results: {results.get('total_trades', 0)}")
+        
         # Format results for frontend
         trades = []
-        for trade in results.get('trades', []):
+        trades_data = results.get('trades', [])
+        
+        # Handle pandas DataFrame
+        if hasattr(trades_data, 'to_dict'):
+            trades_data = trades_data.to_dict('records')
+        
+        for trade in trades_data:
             trades.append({
-                'symbol': trade['symbol'],
-                'entry_time': trade['entry_time'],
-                'entry_price': trade['entry_price'],
-                'exit_time': trade['exit_time'],
-                'exit_price': trade['exit_price'],
-                'direction': trade['direction'],
-                'pnl': trade['pnl'],
-                'pnl_pct': trade['pnl_pct'],
-                'win': trade['pnl'] > 0,
+                'symbol': trade.get('symbol', ''),
+                'entry_time': str(trade.get('entry_time', '')),
+                'entry_price': float(trade.get('entry_price', 0)),
+                'exit_time': str(trade.get('exit_time', '')),
+                'exit_price': float(trade.get('exit_price', 0)),
+                'direction': trade.get('direction', 'BUY'),
+                'pnl': float(trade.get('pnl', 0)),
+                'pnl_pct': float(trade.get('pnl_pct', 0)),
+                'win': float(trade.get('pnl', 0)) > 0,
                 'reason': trade.get('reason', '')
             })
         
@@ -760,6 +770,7 @@ def run_backtest():
         winning_trades = sum(1 for t in trades if t['win'])
         losing_trades = total_trades - winning_trades
         total_pnl = sum(t['pnl'] for t in trades)
+        pnl_percentage = (total_pnl / capital * 100) if capital > 0 else 0
         
         wins = [t['pnl'] for t in trades if t['win']]
         losses = [abs(t['pnl']) for t in trades if not t['win']]
@@ -770,6 +781,7 @@ def run_backtest():
             'losing_trades': losing_trades,
             'win_rate': (winning_trades / total_trades * 100) if total_trades > 0 else 0,
             'total_pnl': total_pnl,
+            'pnl_percentage': round(pnl_percentage, 2),
             'avg_win': sum(wins) / len(wins) if wins else 0,
             'avg_loss': sum(losses) / len(losses) if losses else 0,
             'max_win': max(wins) if wins else 0,

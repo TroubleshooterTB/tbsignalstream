@@ -34,7 +34,12 @@
     {
       "source": ".",
       "backendId": "studio",
-      "ignore": ["firebase.json", "**/.*", "**/node_modules/**"]
+      "ignore": [
+        "firebase.json",
+        "**/.*",
+        "**/node_modules/**"
+      ],
+      "alwaysDeployFromSource": false
     }
   ]
 }

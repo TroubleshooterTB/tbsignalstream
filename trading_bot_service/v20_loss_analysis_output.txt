@@ -1,0 +1,147 @@
+D:\Tushar 2.0\tbsignalstream_backup\tbsignalstream_backup\trading_bot_service\analyze_v20_losses.py:190: FutureWarning: The default of observed=False is deprecated and will be changed to True in a future version of pandas. Pass observed=False to retain current behavior or observed=True to adopt the future default and silence this warning.
+  loss_dist = losers_df.groupby('loss_category').agg({
+================================================================================
+v2.0 ENHANCED PRECISION - LOSING TRADES ANALYSIS
+================================================================================
+
+Total trades: 62
+Winning trades: 26
+Losing trades: 36
+Win Rate: 41.94%
+
+================================================================================
+ANALYZING 36 LOSING TRADES
+================================================================================
+
+================================================================================
+PATTERN 1: LOSERS BY SYMBOL
+================================================================================
+               Total_Trades  Losers  Winners  Net_PnL  Avg_PnL  Win_Rate
+symbol                                                                  
+ICICIBANK-EQ              7       5        2   887.95   126.85     28.57
+HINDUNILVR-EQ            13       9        4  -225.85   -17.37     30.77
+BHARTIARTL-EQ            21      13        8   770.10    36.67     38.10
+HDFCBANK-EQ              15       8        7  5607.21   373.81     46.67
+INFY-EQ                   4       1        3  4719.45  1179.86     75.00
+RELIANCE-EQ               2       0        2  4040.00  2020.00    100.00
+
+≡ƒöì Symbol Insights:
+   ΓÜá∩╕Å WORST: ICICIBANK-EQ - 28.6% WR, Γé╣888 net
+   Γ£à BEST: RELIANCE-EQ - 100.0% WR, Γé╣4040 net
+
+   ≡ƒÜ¿ PROBLEM SYMBOLS (WR<40% OR Negative Net):
+      - ICICIBANK-EQ: 28.6% WR, Γé╣888 net
+      - HINDUNILVR-EQ: 30.8% WR, Γé╣-226 net
+      - BHARTIARTL-EQ: 38.1% WR, Γé╣770 net
+
+================================================================================
+PATTERN 2: LOSERS BY DIRECTION (LONG vs SHORT)
+================================================================================
+           Total_Trades  Losers  Winners  Net_PnL  Avg_PnL  Win_Rate
+direction                                                           
+LONG                 30      18       12  6353.00   211.77     40.00
+SHORT                32      18       14  9445.86   295.18     43.75
+
+≡ƒöì Direction Insights:
+   LONG:  40.0% WR, Γé╣6353 net, Γé╣212 avg
+   SHORT: 43.8% WR, Γé╣9446 net, Γé╣295 avg
+
+   ΓÜá∩╕Å LONG underperforming SHORT by 3.8% WR
+   ≡ƒÆí Consider: Stricter filters for LONG trades
+
+================================================================================
+PATTERN 3: LOSERS BY HOUR OF DAY
+================================================================================
+            Total  Losers  Winners  Net_PnL  Win_Rate
+entry_hour                                           
+13             21      14        7  -449.64     33.33
+14             20      12        8  2467.20     40.00
+15             11       6        5  6548.12     45.45
+12             10       4        6  7233.18     60.00
+
+≡ƒöì Hour Insights:
+   ΓÜá∩╕Å WORST HOURS (WR < 40%):
+      13:00 - 33.3% WR (14/21 trades)
+   Γ£à BEST HOURS (WR >= 50%):
+      12:00 - 60.0% WR (6/10 trades)
+
+================================================================================
+PATTERN 4: LOSERS BY EXIT TYPE
+================================================================================
+             Count  Total_Loss  Avg_Loss  Percentage
+exit_reason                                         
+Stop Loss       31   -35241.81  -1136.83       86.11
+End of Day       5     -582.60   -116.52       13.89
+
+≡ƒöì Exit Type Insights:
+   SL Hits: 0/36 (0.0%)
+   EOD Closes: 0/36 (0.0%)
+
+================================================================================
+PATTERN 5: LOSERS BY DATE
+================================================================================
+            Total  Losers  Winners  Net_PnL  Win_Rate
+date                                                 
+2024-11-11      1       1        0 -1149.20      0.00
+2024-11-21      2       2        0 -2331.85      0.00
+2024-11-29     11       7        4   773.25     36.36
+2024-11-12      8       5        3  1496.78     37.50
+2024-11-19      8       5        3  1737.42     37.50
+2024-11-13      9       5        4  2407.38     44.44
+2024-11-14      8       4        4  4492.90     50.00
+2024-11-22      4       2        2   584.25     50.00
+2024-11-27      8       4        4  5258.08     50.00
+2024-11-28      3       1        2  2529.85     66.67
+
+≡ƒöì Date Insights:
+   ≡ƒÜ¿ WORST DAYS (0% WR): 2 days
+      2024-11-11: 1 losers, Γé╣-1149 damage
+      2024-11-21: 2 losers, Γé╣-2332 damage
+
+================================================================================
+PATTERN 6: LOSS MAGNITUDE DISTRIBUTION
+================================================================================
+               Count  Total_Loss  Avg_Loss  Percentage
+loss_category                                         
+Γé╣0-500             5     -582.60   -116.52       13.89
+Γé╣500-800           0        0.00       NaN        0.00
+Γé╣800-1000          0        0.00       NaN        0.00
+Γé╣1000-1200        31   -35241.81  -1136.83       86.11
+Γé╣1200+             0        0.00       NaN        0.00
+
+≡ƒöì Loss Magnitude Insights:
+   Losses ΓëÑ Γé╣1,000: 31/36 (86.1%)
+   Average loss: Γé╣995.12
+   Largest loss: Γé╣1181.25
+
+================================================================================
+PATTERN 7: LOSERS BY DAY OF WEEK
+================================================================================
+             Total  Losers  Winners  Net_PnL  Avg_PnL  Win_Rate
+day_of_week                                                    
+Monday           1       1        0 -1149.20 -1149.20      0.00
+Tuesday         16      10        6  3234.20   202.14     37.50
+Wednesday       17       9        8  7665.46   450.91     47.06
+Thursday        13       7        6  4690.90   360.84     46.15
+Friday          15       9        6  1357.50    90.50     40.00
+
+≡ƒöì Day of Week Insights:
+   ΓÜá∩╕Å WORST: Monday - 0.0% WR, Γé╣-1149 avg
+   Γ£à BEST: Wednesday - 47.1% WR, Γé╣451 avg
+
+================================================================================
+PATTERN 8: TRADE DURATION ANALYSIS
+================================================================================
+
+Losing Trades Duration:
+   Average: 12.1 minutes
+   Median: 7.5 minutes
+   Min: 5.0 minutes
+   Max: 55.0 minutes
+
+Winning Trades Duration:
+Traceback (most recent call last):
+  File "D:\Tushar 2.0\tbsignalstream_backup\tbsignalstream_backup\trading_bot_service\analyze_v20_losses.py", line 239, in <module>
+    print(f"   Average: {winners['trade_duration_minutes'].mean():.1f} minutes")
+                         ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+IndexError: invalid index to scalar variable.

@@ -1,0 +1,2 @@
+symbol,entry_time,exit_time,entry_price,exit_price,quantity,pattern,pnl,pnl_pct,exit_reason
+JSWSTEEL-EQ,2025-12-03 14:58:00+05:30,2025-12-08 14:36:00+05:30,1146.3,1117.2,34,Double Bottom,-1066.3589999999895,-2.7333305271017645,stop_loss

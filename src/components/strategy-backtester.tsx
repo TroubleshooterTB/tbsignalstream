@@ -47,6 +47,8 @@ export function StrategyBacktester() {
   const { botConfig } = useTradingContext();
   const [isBacktesting, setIsBacktesting] = useState(false);
   const [backtestEnabled, setBacktestEnabled] = useState(false);
+  const [dateMode, setDateMode] = useState<"single" | "range">("range");
+  const [singleDate, setSingleDate] = useState<Date>();
   const [startDate, setStartDate] = useState<Date>();
   const [endDate, setEndDate] = useState<Date>();
   const [selectedStrategy, setSelectedStrategy] = useState<string>("defining");
@@ -56,14 +58,22 @@ export function StrategyBacktester() {
   const [error, setError] = useState<string>("");
 
   const runBacktest = async () => {
-    if (!startDate || !endDate) {
-      setError("Please select both start and end dates");
-      return;
-    }
+    // Validate based on mode
+    if (dateMode === "single") {
+      if (!singleDate) {
+        setError("Please select a date");
+        return;
+      }
+    } else {
+      if (!startDate || !endDate) {
+        setError("Please select both start and end dates");
+        return;
+      }
 
-    if (startDate >= endDate) {
-      setError("Start date must be before end date");
-      return;
+      if (startDate >= endDate) {
+        setError("Start date must be before end date");
+        return;
+      }
     }
 
     const capitalAmount = parseFloat(capital);
@@ -78,6 +88,10 @@ export function StrategyBacktester() {
     setSummary(null);
 
     try {
+      // Use single date for both start/end if in single day mode
+      const backtestStartDate = dateMode === "single" ? singleDate! : startDate!;
+      const backtestEndDate = dateMode === "single" ? singleDate! : endDate!;
+      
       const response = await fetch("/api/backtest", {
         method: "POST",
         headers: {
@@ -85,8 +99,8 @@ export function StrategyBacktester() {
         },
         body: JSON.stringify({
           strategy: selectedStrategy,
-          start_date: format(startDate, "yyyy-MM-dd"),
-          end_date: format(endDate, "yyyy-MM-dd"),
+          start_date: format(backtestStartDate, "yyyy-MM-dd"),
+          end_date: format(backtestEndDate, "yyyy-MM-dd"),
           symbols: botConfig.symbols || "NIFTY50",
           capital: capitalAmount,
         }),
@@ -189,10 +203,66 @@ export function StrategyBacktester() {
             </p>
           </div>
 
-          {/* Date Range */}
+          {/* Date Mode Selector */}
           <div className="space-y-2">
-            <Label>Date Range</Label>
+            <Label>Backtest Period</Label>
             <div className="flex gap-2">
+              <Button
+                variant={dateMode === "single" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setDateMode("single")}
+                disabled={isBacktesting}
+                className="flex-1"
+              >
+                Single Day
+              </Button>
+              <Button
+                variant={dateMode === "range" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setDateMode("range")}
+                disabled={isBacktesting}
+                className="flex-1"
+              >
+                Date Range
+              </Button>
+            </div>
+          </div>
+
+          {/* Single Date Picker */}
+          {dateMode === "single" && (
+            <div className="space-y-2">
+              <Label>Select Date</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={cn(
+                      "w-full justify-start text-left font-normal",
+                      !singleDate && "text-muted-foreground"
+                    )}
+                    disabled={isBacktesting}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {singleDate ? format(singleDate, "PPP") : "Pick a date"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0">
+                  <Calendar
+                    mode="single"
+                    selected={singleDate}
+                    onSelect={setSingleDate}
+                    disabled={(date) => date > new Date() || date < new Date("2020-01-01")}
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+          )}
+
+          {/* Date Range Pickers */}
+          {dateMode === "range" && (
+            <div className="space-y-2">
+              <Label>Date Range</Label>
+              <div className="flex gap-2">
               <Popover>
                 <PopoverTrigger asChild>
                   <Button
@@ -241,10 +311,12 @@ export function StrategyBacktester() {
                 </PopoverContent>
               </Popover>
             </div>
-          </div>
+            </div>
+          )}
         </div>
 
-        {/* Quick Presets */}
+        {/* Quick Presets - Only show for range mode */}
+        {dateMode === "range" && (
         <div className="flex flex-wrap gap-2">
           <Button
             variant="outline"
@@ -324,11 +396,12 @@ export function StrategyBacktester() {
             December 2025
           </Button>
         </div>
+        )}
 
         {/* Run Button */}
         <Button
           onClick={runBacktest}
-          disabled={isBacktesting || !startDate || !endDate}
+          disabled={isBacktesting || (dateMode === "single" ? !singleDate : (!startDate || !endDate))}
           className="w-full"
         >
           {isBacktesting ? (

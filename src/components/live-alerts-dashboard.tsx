@@ -32,6 +32,7 @@ import { MarketHeatmap } from "@/components/market-heatmap";
 import { BotPerformanceStats } from "@/components/bot-performance-stats";
 import { PatternBadge } from "@/components/pattern-education";
 import { BotActivityFeed } from "@/components/bot-activity-feed";
+import { StrategyBacktester } from "@/components/strategy-backtester";
 import { db } from "@/lib/firebase";
 import { onSnapshot, collection, query, where, orderBy, limit } from "firebase/firestore";
 
@@ -376,6 +377,9 @@ export function LiveAlertsDashboard() {
         <WebSocketControls />
         <TradingBotControls />
       </div>
+      
+      {/* Strategy Backtesting - NEW: Test strategies on historical data */}
+      <StrategyBacktester />
       
       {/* Market Overview - NEW: Heatmap and Performance */}
       <div className="space-y-4">

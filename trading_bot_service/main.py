@@ -700,6 +700,86 @@ def clear_old_signals():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/backtest', methods=['POST'])
+def run_backtest():
+    """
+    Run backtest on historical data
+    Independent of live trading - can run while bot is trading live
+    """
+    try:
+        data = request.get_json()
+        strategy = data.get('strategy', 'defining')
+        start_date = data.get('start_date')  # Format: YYYY-MM-DD
+        end_date = data.get('end_date')      # Format: YYYY-MM-DD
+        symbols = data.get('symbols', 'NIFTY50')
+        
+        if not start_date or not end_date:
+            return jsonify({'error': 'start_date and end_date are required'}), 400
+        
+        logger.info(f"Starting backtest: {strategy} from {start_date} to {end_date}")
+        
+        # Import backtest runner
+        from run_backtest_defining_order import run_backtest as execute_backtest
+        
+        # Run backtest (this is synchronous and may take time)
+        results = execute_backtest(
+            start_date=start_date,
+            end_date=end_date,
+            strategy=strategy,
+            symbols=symbols
+        )
+        
+        # Format results for frontend
+        trades = []
+        for trade in results.get('trades', []):
+            trades.append({
+                'symbol': trade['symbol'],
+                'entry_time': trade['entry_time'],
+                'entry_price': trade['entry_price'],
+                'exit_time': trade['exit_time'],
+                'exit_price': trade['exit_price'],
+                'direction': trade['direction'],
+                'pnl': trade['pnl'],
+                'pnl_pct': trade['pnl_pct'],
+                'win': trade['pnl'] > 0,
+                'reason': trade.get('reason', '')
+            })
+        
+        # Calculate summary statistics
+        total_trades = len(trades)
+        winning_trades = sum(1 for t in trades if t['win'])
+        losing_trades = total_trades - winning_trades
+        total_pnl = sum(t['pnl'] for t in trades)
+        
+        wins = [t['pnl'] for t in trades if t['win']]
+        losses = [abs(t['pnl']) for t in trades if not t['win']]
+        
+        summary = {
+            'total_trades': total_trades,
+            'winning_trades': winning_trades,
+            'losing_trades': losing_trades,
+            'win_rate': (winning_trades / total_trades * 100) if total_trades > 0 else 0,
+            'total_pnl': total_pnl,
+            'avg_win': sum(wins) / len(wins) if wins else 0,
+            'avg_loss': sum(losses) / len(losses) if losses else 0,
+            'max_win': max(wins) if wins else 0,
+            'max_loss': max(losses) if losses else 0,
+            'profit_factor': (sum(wins) / sum(losses)) if losses and sum(losses) > 0 else 0
+        }
+        
+        return jsonify({
+            'trades': trades,
+            'summary': summary,
+            'strategy': strategy,
+            'start_date': start_date,
+            'end_date': end_date
+        }), 200
+    
+    except Exception as e:
+        logger.error(f"Backtest error: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
     app.run(host='0.0.0.0', port=port, threaded=True)

@@ -13,6 +13,9 @@ RUN apt-get update && apt-get install -y \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Invalidate cache for code changes
+ARG CACHE_BUST=1
+
 # Copy application code
 COPY . .
 

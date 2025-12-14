@@ -311,12 +311,11 @@ export function StrategyBacktester() {
                 </PopoverContent>
               </Popover>
             </div>
-            </div>
+          </div>
           )}
         </div>
 
-        {/* Quick Presets - Only show for range mode */}
-        {dateMode === "range" && (
+        {/* Capital Quick Presets */}
         <div className="flex flex-wrap gap-2">
           <Button
             variant="outline"
@@ -352,7 +351,8 @@ export function StrategyBacktester() {
           </Button>
         </div>
 
-        {/* Quick Date Presets */}
+        {/* Quick Date Presets - Only show for range mode */}
+        {dateMode === "range" && (
         <div className="flex flex-wrap gap-2">
           <Button
             variant="outline"

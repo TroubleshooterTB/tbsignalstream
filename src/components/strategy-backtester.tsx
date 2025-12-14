@@ -48,6 +48,7 @@ export function StrategyBacktester() {
   const [startDate, setStartDate] = useState<Date>();
   const [endDate, setEndDate] = useState<Date>();
   const [selectedStrategy, setSelectedStrategy] = useState<string>("defining");
+  const [capital, setCapital] = useState<string>("100000");
   const [results, setResults] = useState<BacktestResult[]>([]);
   const [summary, setSummary] = useState<BacktestSummary | null>(null);
   const [error, setError] = useState<string>("");
@@ -60,6 +61,12 @@ export function StrategyBacktester() {
 
     if (startDate >= endDate) {
       setError("Start date must be before end date");
+      return;
+    }
+
+    const capitalAmount = parseFloat(capital);
+    if (isNaN(capitalAmount) || capitalAmount <= 0) {
+      setError("Please enter a valid capital amount");
       return;
     }
 
@@ -79,6 +86,7 @@ export function StrategyBacktester() {
           start_date: format(startDate, "yyyy-MM-dd"),
           end_date: format(endDate, "yyyy-MM-dd"),
           symbols: botConfig.symbols || "NIFTY50",
+          capital: capitalAmount,
         }),
       });
 
@@ -140,7 +148,7 @@ export function StrategyBacktester() {
       </CardHeader>
       <CardContent className="space-y-6">
         {/* Controls */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {/* Strategy Selection */}
           <div className="space-y-2">
             <Label>Strategy</Label>
@@ -159,6 +167,24 @@ export function StrategyBacktester() {
                 <SelectItem value="both">Both (Dual Confirmation)</SelectItem>
               </SelectContent>
             </Select>
+          </div>
+
+          {/* Capital Amount */}
+          <div className="space-y-2">
+            <Label htmlFor="capital">Capital Amount (₹)</Label>
+            <Input
+              id="capital"
+              type="number"
+              placeholder="100000"
+              value={capital}
+              onChange={(e) => setCapital(e.target.value)}
+              disabled={isBacktesting}
+              min="1000"
+              step="1000"
+            />
+            <p className="text-xs text-muted-foreground">
+              Starting capital for backtest
+            </p>
           </div>
 
           {/* Date Range */}
@@ -214,6 +240,42 @@ export function StrategyBacktester() {
               </Popover>
             </div>
           </div>
+        </div>
+
+        {/* Quick Presets */}
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setCapital("50000")}
+            disabled={isBacktesting}
+          >
+            ₹50K Capital
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setCapital("100000")}
+            disabled={isBacktesting}
+          >
+            ₹1L Capital
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setCapital("200000")}
+            disabled={isBacktesting}
+          >
+            ₹2L Capital
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setCapital("500000")}
+            disabled={isBacktesting}
+          >
+            ₹5L Capital
+          </Button>
         </div>
 
         {/* Quick Date Presets */}

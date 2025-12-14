@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { strategy, start_date, end_date, symbols } = body;
+    const { strategy, start_date, end_date, symbols, capital } = body;
 
     // Validate inputs
     if (!strategy || !start_date || !end_date) {
@@ -27,6 +27,7 @@ export async function POST(request: NextRequest) {
         start_date,
         end_date,
         symbols: symbols || 'NIFTY50',
+        capital: capital || 100000,  // Default to ₹1L if not provided
       }),
     });
 

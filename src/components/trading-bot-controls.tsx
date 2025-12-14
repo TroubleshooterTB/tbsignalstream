@@ -86,16 +86,23 @@ export function TradingBotControls() {
               onChange={(e) => updateBotConfig({ maxPositions: e.target.value })}
               disabled={isBotRunning}
             />
+            <p className="text-xs text-muted-foreground">
+              Maximum concurrent trades
+            </p>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="positionSize">Position Size (₹)</Label>
+            <Label htmlFor="positionSize">Total Trading Capital (₹)</Label>
             <Input
               id="positionSize"
               type="number"
               value={botConfig.positionSize}
               onChange={(e) => updateBotConfig({ positionSize: e.target.value })}
               disabled={isBotRunning}
+              placeholder="50000"
             />
+            <p className="text-xs text-muted-foreground">
+              Bot manages position sizing (1% risk/trade)
+            </p>
           </div>
         </div>
 

@@ -57,7 +57,7 @@ export function TradingProvider({ children }: { children: React.ReactNode }) {
     mode: 'paper' as 'paper' | 'live',
     strategy: 'defining' as 'pattern' | 'ironclad' | 'both' | 'defining', // v3.2 BEST: 59% WR, 24% returns
     maxPositions: '5', // Increased from 3 to allow more opportunities
-    positionSize: '10000', // ₹10,000 per position
+    positionSize: '50000', // ₹50,000 total capital (bot manages sizing: 1% risk per trade)
   });
 
   useEffect(() => {

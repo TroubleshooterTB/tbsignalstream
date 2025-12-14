@@ -339,9 +339,11 @@ class DefiningOrderStrategy:
         
         def calc_vwap_group(group):
             typical_price = (group['High'] + group['Low'] + group['Close']) / 3
-            return (typical_price * group['Volume']).cumsum() / group['Volume'].cumsum()
+            vwap = (typical_price * group['Volume']).cumsum() / group['Volume'].cumsum()
+            return vwap
         
-        data['VWAP'] = data.groupby('Date').apply(calc_vwap_group).reset_index(level=0, drop=True)
+        # Use transform to ensure we get a Series back
+        data['VWAP'] = data.groupby('Date', group_keys=False).apply(calc_vwap_group)
         data.drop('Date', axis=1, inplace=True)
         
         return data

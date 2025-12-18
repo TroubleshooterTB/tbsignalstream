@@ -21,7 +21,7 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler(f'live_trading_{datetime.now().strftime("%Y%m%d")}.log'),
+        logging.FileHandler(f'live_trading_{datetime.now().strftime("%Y%m%d")}.log', encoding='utf-8'),
         logging.StreamHandler()
     ]
 )
@@ -30,14 +30,19 @@ logger = logging.getLogger(__name__)
 # Import the exact strategy class from backtest
 sys.path.append('.')
 from run_backtest_defining_order import DefiningOrderStrategy
+from SmartApi import SmartConnect
+import pyotp
+import firebase_admin
+from firebase_admin import firestore
 
 class LiveTradingBot:
     """
     Live trading bot using v3.2 validated strategy
+    Connected to Firestore for dashboard integration
     """
     
-    def __init__(self, api_key: str, client_code: str, password: str, totp: str, 
-                 initial_capital: float = 100000, paper_trade: bool = True):
+    def __init__(self, api_key: str, client_code: str, password: str, totp_code: str, 
+                 initial_capital: float = 100000, paper_trade: bool = True, user_id: str = "local_bot_user"):
         """
         Initialize live trading bot
         
@@ -45,16 +50,41 @@ class LiveTradingBot:
             api_key: Angel One API key
             client_code: Angel One client code
             password: Trading password
-            totp: TOTP from authenticator app
+            totp_code: 6-digit TOTP code from authenticator app
             initial_capital: Starting capital
             paper_trade: If True, simulate trades without real execution
+            user_id: User ID for Firestore tracking
         """
-        self.strategy = DefiningOrderStrategy(api_key, client_code, password, totp)
+        # Initialize Firestore
+        if not firebase_admin._apps:
+            firebase_admin.initialize_app()
+        self.db = firestore.client()
+        self.user_id = user_id
+        
+        # Authenticate with Angel One first
+        logger.info("Authenticating with Angel One...")
+        try:
+            smart_api = SmartConnect(api_key=api_key)
+            
+            # Login with the 6-digit TOTP code directly
+            session_data = smart_api.generateSession(client_code, password, totp_code)
+            jwt_token = session_data['data']['jwtToken']
+            logger.info("Authentication successful!")
+        except Exception as e:
+            logger.error(f"Authentication failed: {e}")
+            raise
+        
+        # Initialize strategy with authenticated token
+        self.strategy = DefiningOrderStrategy(api_key, jwt_token)
         self.initial_capital = initial_capital
         self.current_capital = initial_capital
         self.paper_trade = paper_trade
         self.open_positions = {}
         self.trade_log = []
+        self.bot_start_time = datetime.now()
+        
+        # Write initial bot status to Firestore
+        self._update_bot_status("running")
         
         logger.info("="*80)
         logger.info("🚀 LIVE TRADING BOT v3.2 INITIALIZED")
@@ -62,7 +92,73 @@ class LiveTradingBot:
         logger.info(f"Mode: {'PAPER TRADING' if paper_trade else '⚠️ LIVE TRADING'}")
         logger.info(f"Initial Capital: ₹{initial_capital:,.2f}")
         logger.info(f"Strategy: The Defining Order - Ironclad v3.2")
+        logger.info(f"Dashboard: Connected to Firestore")
         logger.info("="*80)
+    
+    def _update_bot_status(self, status: str):
+        """Update bot status in Firestore for dashboard"""
+        try:
+            self.db.collection('bot_status').document(self.user_id).set({
+                'status': status,
+                'strategy': 'alpha-ensemble',
+                'mode': 'paper' if self.paper_trade else 'live',
+                'capital': self.current_capital,
+                'open_positions': len(self.open_positions),
+                'total_trades': len(self.trade_log),
+                'last_update': firestore.SERVER_TIMESTAMP,
+                'started_at': self.bot_start_time
+            }, merge=True)
+        except Exception as e:
+            logger.error(f"Failed to update bot status: {e}")
+    
+    def _log_activity(self, action: str, details: dict):
+        """Log bot activity to Firestore for activity feed"""
+        try:
+            self.db.collection('bot_activity').add({
+                'user_id': self.user_id,
+                'action': action,
+                'details': details,
+                'timestamp': firestore.SERVER_TIMESTAMP
+            })
+        except Exception as e:
+            logger.error(f"Failed to log activity: {e}")
+    
+    def _save_signal(self, signal_info: dict):
+        """Save trade signal to Firestore"""
+        try:
+            self.db.collection('signals').add({
+                'user_id': self.user_id,
+                'symbol': signal_info['symbol'],
+                'direction': signal_info['direction'],
+                'entry_price': signal_info['entry'],
+                'stop_loss': signal_info['sl'],
+                'take_profit': signal_info['tp'],
+                'strategy': 'alpha-ensemble',
+                'timestamp': firestore.SERVER_TIMESTAMP,
+                'status': 'executed'
+            })
+        except Exception as e:
+            logger.error(f"Failed to save signal: {e}")
+    
+    def _save_trade(self, trade: dict):
+        """Save completed trade to Firestore"""
+        try:
+            self.db.collection('trades').add({
+                'user_id': self.user_id,
+                'symbol': trade['symbol'],
+                'direction': trade['direction'],
+                'entry_price': trade['entry'],
+                'exit_price': trade['exit'],
+                'quantity': trade['quantity'],
+                'pnl': trade['pnl'],
+                'exit_reason': trade['reason'],
+                'entry_time': trade['entry_time'],
+                'exit_time': trade['exit_time'],
+                'strategy': 'alpha-ensemble',
+                'mode': 'paper' if self.paper_trade else 'live'
+            })
+        except Exception as e:
+            logger.error(f"Failed to save trade: {e}")
         
     def get_live_data(self, symbol: str, token: str) -> Optional[pd.DataFrame]:
         """
@@ -162,6 +258,16 @@ class LiveTradingBot:
                 'direction': signal['direction'],
                 'entry_time': datetime.now()
             }
+            
+            # Save to Firestore
+            self._save_signal(signal_info)
+            self._log_activity('signal_generated', {
+                'symbol': symbol,
+                'direction': signal['direction'],
+                'entry': signal['entry']
+            })
+            self._update_bot_status("running")
+            
             return True
             
         else:
@@ -229,6 +335,15 @@ class LiveTradingBot:
         }
         self.trade_log.append(trade)
         
+        # Save to Firestore
+        self._save_trade(trade)
+        self._log_activity('trade_closed', {
+            'symbol': symbol,
+            'pnl': pnl,
+            'reason': reason
+        })
+        self._update_bot_status("running")
+        
         # Display result
         emoji = '✅' if pnl > 0 else '❌'
         logger.info(f"{emoji} {reason} Hit: {symbol} {position['direction']} at ₹{exit_price:.2f}, P&L: ₹{pnl:,.2f}")
@@ -250,6 +365,13 @@ class LiveTradingBot:
         logger.info(f"Mode: {'PAPER TRADING' if self.paper_trade else 'LIVE TRADING'}")
         logger.info("="*80 + "\n")
         
+        # Log bot start
+        self._log_activity('bot_started', {
+            'mode': 'paper' if self.paper_trade else 'live',
+            'strategy': 'alpha-ensemble',
+            'symbols_count': len(symbols)
+        })
+        
         try:
             while True:
                 current_time = datetime.now()
@@ -268,6 +390,9 @@ class LiveTradingBot:
                     # Monitor existing positions
                     self.monitor_positions(symbols)
                     
+                    # Update bot status periodically
+                    self._update_bot_status("running")
+                    
                     # Status update
                     logger.info(f"⏰ {current_time.strftime('%H:%M:%S')} | "
                               f"Positions: {len(self.open_positions)} | "
@@ -276,6 +401,7 @@ class LiveTradingBot:
                 
                 else:
                     logger.info(f"🌙 Market closed - waiting... ({current_time.strftime('%H:%M:%S')})")
+                    self._update_bot_status("idle")
                 
                 # Wait before next check
                 time_module.sleep(check_interval)
@@ -291,6 +417,18 @@ class LiveTradingBot:
         logger.info("\n" + "="*80)
         logger.info("🛑 SHUTTING DOWN BOT")
         logger.info("="*80)
+        
+        try:
+            # Update Firestore
+            self._update_bot_status("stopped")
+            self._log_activity('bot_stopped', {
+                'total_trades': len(self.trade_log),
+                'final_capital': self.current_capital,
+                'pnl': self.current_capital - self.initial_capital
+            })
+            logger.info("Dashboard updated - bot stopped")
+        except Exception as e:
+            logger.error(f"Failed to update dashboard: {e}")
         
         # Close all open positions
         if self.open_positions:

@@ -51,7 +51,7 @@ export function StrategyBacktester() {
   const [singleDate, setSingleDate] = useState<Date>();
   const [startDate, setStartDate] = useState<Date>();
   const [endDate, setEndDate] = useState<Date>();
-  const [selectedStrategy, setSelectedStrategy] = useState<string>("defining");
+  const [selectedStrategy, setSelectedStrategy] = useState<string>("alpha-ensemble");
   const [capital, setCapital] = useState<string>("100000");
   const [results, setResults] = useState<BacktestResult[]>([]);
   const [summary, setSummary] = useState<BacktestSummary | null>(null);
@@ -177,6 +177,7 @@ export function StrategyBacktester() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="alpha-ensemble">⭐ Alpha-Ensemble (NEW)</SelectItem>
                 <SelectItem value="defining">The Defining Order v3.2</SelectItem>
                 <SelectItem value="pattern">Pattern Detector</SelectItem>
                 <SelectItem value="ironclad">Ironclad Strategy</SelectItem>

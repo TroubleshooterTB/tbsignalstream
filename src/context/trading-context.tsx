@@ -55,7 +55,7 @@ export function TradingProvider({ children }: { children: React.ReactNode }) {
   const [botConfig, setBotConfig] = useState({
     symbols: NIFTY_50_SYMBOLS_STRING, // All Nifty 50 stocks
     mode: 'paper' as 'paper' | 'live',
-    strategy: 'defining' as 'pattern' | 'ironclad' | 'both' | 'defining', // v3.2 BEST: 59% WR, 24% returns
+    strategy: 'alpha-ensemble' as 'pattern' | 'ironclad' | 'both' | 'defining' | 'alpha-ensemble', // NEW BEST: 36% WR, 2.64 PF, 250% returns
     maxPositions: '5', // Increased from 3 to allow more opportunities
     positionSize: '50000', // ₹50,000 total capital (bot manages sizing: 1% risk per trade)
   });

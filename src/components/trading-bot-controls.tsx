@@ -38,16 +38,25 @@ export function TradingBotControls() {
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="space-y-2">
-          <Label htmlFor="symbols">Symbols (comma-separated)</Label>
-          <Input
-            id="symbols"
-            placeholder="All Nifty 50 stocks (default) or custom list: SBIN-EQ,RELIANCE-EQ,TCS-EQ"
-            value={botConfig.symbols}
-            onChange={(e) => updateBotConfig({ symbols: e.target.value })}
+          <Label htmlFor="symbols">Symbol Universe</Label>
+          <Select
+            value={botConfig.symbols || "NIFTY50"}
+            onValueChange={(value) => updateBotConfig({ symbols: value })}
             disabled={isBotRunning}
-          />
+          >
+            <SelectTrigger id="symbols">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="NIFTY50">Nifty 50 (Recommended)</SelectItem>
+              <SelectItem value="NIFTY100">Nifty 100 (More opportunities)</SelectItem>
+              <SelectItem value="NIFTY200">Nifty 200 (Maximum coverage)</SelectItem>
+            </SelectContent>
+          </Select>
           <p className="text-xs text-muted-foreground">
-            Bot scans all symbols and selects trades with highest confidence scores
+            {botConfig.strategy === 'alpha-ensemble' 
+              ? 'Alpha-Ensemble applies intelligent screening (EMA200, ADX, RSI, Volume) to find best opportunities'
+              : 'Bot scans all symbols and selects trades with highest confidence scores'}
           </p>
         </div>
 

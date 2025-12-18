@@ -50,6 +50,35 @@ if not ANGEL_ONE_API_KEY:
 active_bots: Dict[str, 'TradingBotInstance'] = {}
 
 
+def _get_symbols_from_universe(universe: str) -> list:
+    """Get symbol list based on universe selection"""
+    # Nifty 50 symbols (default)
+    nifty50 = [
+        'RELIANCE-EQ', 'TCS-EQ', 'HDFCBANK-EQ', 'INFY-EQ', 'ICICIBANK-EQ',
+        'HINDUNILVR-EQ', 'ITC-EQ', 'BHARTIARTL-EQ', 'KOTAKBANK-EQ', 'BAJFINANCE-EQ',
+        'LT-EQ', 'ASIANPAINT-EQ', 'AXISBANK-EQ', 'HCLTECH-EQ', 'MARUTI-EQ',
+        'SUNPHARMA-EQ', 'TITAN-EQ', 'NESTLEIND-EQ', 'ULTRACEMCO-EQ', 'WIPRO-EQ',
+        'NTPC-EQ', 'TATAMOTORS-EQ', 'BAJAJFINSV-EQ', 'TATASTEEL-EQ', 'TECHM-EQ',
+        'ADANIENT-EQ', 'ONGC-EQ', 'COALINDIA-EQ', 'HINDALCO-EQ', 'INDUSINDBK-EQ',
+        'EICHERMOT-EQ', 'DIVISLAB-EQ', 'BRITANNIA-EQ', 'DRREDDY-EQ', 'APOLLOHOSP-EQ',
+        'CIPLA-EQ', 'GRASIM-EQ', 'HEROMOTOCO-EQ', 'ADANIPORTS-EQ', 'HINDZINC-EQ',
+        'M&M-EQ', 'BPCL-EQ', 'TRENT-EQ', 'ADANIGREEN-EQ', 'LTIM-EQ',
+        'SBIN-EQ', 'POWERGRID-EQ', 'JSWSTEEL-EQ', 'SHRIRAMFIN-EQ'
+    ]
+    
+    if universe == 'NIFTY50':
+        return nifty50
+    elif universe == 'NIFTY100':
+        # For now, return Nifty 50 (can be expanded later)
+        return nifty50
+    elif universe == 'NIFTY200':
+        # For now, return Nifty 50 (can be expanded later)  
+        return nifty50
+    else:
+        # Default to Nifty 50
+        return nifty50
+
+
 class TradingBotInstance:
     """Manages a single user's trading bot instance"""
     
@@ -184,10 +213,22 @@ def start_bot():
         
         # Get request data
         data = request.get_json() or {}
-        symbols = data.get('symbols', ['RELIANCE', 'HDFCBANK', 'INFY'])
+        symbol_universe = data.get('symbols', 'NIFTY50')  # 'NIFTY50', 'NIFTY100', 'NIFTY200'
         interval = data.get('interval', '5minute')
         mode = data.get('mode', 'paper')  # 'paper' or 'live'
-        strategy = data.get('strategy', 'pattern')  # 'pattern', 'ironclad', or 'both'
+        strategy = data.get('strategy', 'alpha-ensemble')  # Strategy selection
+        
+        # Convert symbol universe to actual symbol list
+        # For Alpha-Ensemble and other strategies with built-in screening,
+        # we pass the universe name and let the strategy filter internally
+        if strategy == 'alpha-ensemble':
+            # Alpha-Ensemble does its own intelligent screening
+            symbols = symbol_universe  # Pass universe name, not symbol list
+            logger.info(f"Alpha-Ensemble will screen from {symbol_universe}")
+        else:
+            # Other strategies get the full symbol list from the universe
+            symbols = _get_symbols_from_universe(symbol_universe)
+            logger.info(f"Using {len(symbols)} symbols from {symbol_universe}")
         
         # Check if bot already running
         if user_id in active_bots and active_bots[user_id].is_running:

@@ -207,7 +207,7 @@ class DefiningOrderStrategy:
         self.MINIMUM_SL_PERCENT = 0.5  # v1.9: 0.5% minimum (KEEP - working)
         self.ENTRY_CUTOFF_TIME = time(14, 30)  # Base cutoff: 2:30 PM
         self.LATE_ENTRY_EXCEPTION_TIME = time(15, 5)  # Allow until 3:05 PM if volume exceptional
-        self.LATE_ENTRY_VOLUME_THRESHOLD = 1.5  # v3.2: Reduced from 2.5x to 1.5x (capture end-of-day trades)
+        self.LATE_ENTRY_VOLUME_THRESHOLD = 1.2  # v3.3 FIX: Reduced from 1.5x to 1.2x (more end-of-day trades)
         self.TREND_STRENGTH_PERCENT = 0.5  # Price must be >0.5% from SMA50
         self.ATR_MULTIPLIER_FOR_SL = 1.4  # v2.1: 1.4x ATR (was 1.75x - tighter stops)
         
@@ -224,14 +224,14 @@ class DefiningOrderStrategy:
         
         # v2.1 UNIVERSAL FILTERS
         self.SKIP_LUNCH_HOUR = True  # v3.2: RE-BLOCKED - 30% WR when unblocked (toxic)
-        self.ATR_MIN_PERCENT = 0.15  # v2.1: Minimum ATR% (0.15% - very low threshold)
+        self.ATR_MIN_PERCENT = 0.10  # v3.3 FIX: Reduced from 0.15% to 0.10% (capture low-volatility stocks)
         self.ATR_MAX_PERCENT = 5.0  # v2.1: Maximum ATR% (5.0% - very high, rarely hit)
         self.RSI_LONG_THRESHOLD = 60  # v2.2: STRICTER LONG RSI >60 (was 55 - improve 38.5% WR)
         self.RSI_SHORT_THRESHOLD = 45  # v2.1: SHORT needs RSI < 45 (was < 50)
         
         # v2.2 QUALITY FILTERS (Target 60%+ WR)
         self.SKIP_MONDAY = False  # v2.3: REMOVED - no statistical bias in Dec 2025 data
-        self.SKIP_NOON_HOUR = True  # v3.2: RE-BLOCKED - 30% WR when unblocked (toxic)
+        self.SKIP_NOON_HOUR = False  # v3.3 FIX: UNBLOCKED for testing (was toxic at 30% WR with old filters)
         self.SKIP_10AM_HOUR = True  # v2.4: Skip 10:00 hour (0% WR, -₹1,964 in Dec 2025!)
         self.SKIP_11AM_HOUR = True  # TEST: Skip 11:00 hour (20% WR, -₹4.8K trap hour)
         self.SKIP_BHARTIARTL_LONG = True  # v2.2: BHARTIARTL LONG = 44% of v2.1 losses!
@@ -241,7 +241,7 @@ class DefiningOrderStrategy:
         
         # v2.4 ENTRY QUALITY IMPROVEMENTS (Fix 0% SL WR)
         self.EARLY_HOUR_VOLUME_MULTIPLIER = 3.0  # v2.4: 3x volume before 12pm (was 2x)
-        self.MIN_BREAKOUT_STRENGTH_PCT = 0.4  # v3.2: Reduced from 0.6% (capture quality 0.4-0.6% breakouts)
+        self.MIN_BREAKOUT_STRENGTH_PCT = 0.3  # v3.3 FIX: Reduced from 0.4% to 0.3% (capture more valid breakouts)
         
         # v3.0 GRANDMASTER FILTERS (Target 60%+ WR - Fix SL Massacre)
         # Analysis: 28 SL hits (0% WR) vs 24 TP hits (100% WR) = premature entries
@@ -250,8 +250,8 @@ class DefiningOrderStrategy:
         self.ENABLE_SR_PROXIMITY_CHECK = False  # DISABLED - 0.4% blocked 61 trades (0.13-0.32% room = valid entries)
         self.MIN_SR_DISTANCE_PCT = 0.4  # Reduced from 0.8 to 0.4 (was blocking everything)
         self.TIGHTEN_RSI_EXTREMES = True  # Avoid RSI extremes that reverse
-        self.RSI_SAFE_LOWER = 30  # v3.2: Widened from 35 to 30 (avoid rejecting RSI 30-34 valid trades)
-        self.RSI_SAFE_UPPER = 70  # v3.2: Widened from 65 to 70 (avoid rejecting RSI 66-69 valid trades)
+        self.RSI_SAFE_LOWER = 25  # v3.3 FIX: Widened from 30 to 25 (capture oversold reversals)
+        self.RSI_SAFE_UPPER = 75  # v3.3 FIX: Widened from 70 to 75 (capture overbought reversals)
         self.ENABLE_SYMBOL_BLACKLIST = True  # Block chronic losers (FIXED - now passes symbol correctly)
         self.BLACKLISTED_SYMBOLS = ['SBIN-EQ', 'POWERGRID-EQ', 'SHRIRAMFIN-EQ', 'JSWSTEEL-EQ']  # 0-20% WR
         self.ENABLE_PULLBACK_ENTRY = False  # Wait for pullback after breakout (Phase 2)
@@ -342,8 +342,13 @@ class DefiningOrderStrategy:
             vwap = (typical_price * group['Volume']).cumsum() / group['Volume'].cumsum()
             return vwap
         
-        # Use transform to ensure we get a Series back
-        data['VWAP'] = data.groupby('Date', group_keys=False).apply(calc_vwap_group)
+        # Fix: Use transform with proper handling to get Series
+        vwap_values = []
+        for date, group in data.groupby('Date'):
+            vwap = calc_vwap_group(group)
+            vwap_values.append(vwap)
+        
+        data['VWAP'] = pd.concat(vwap_values)
         data.drop('Date', axis=1, inplace=True)
         
         return data

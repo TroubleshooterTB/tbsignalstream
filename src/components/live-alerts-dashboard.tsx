@@ -23,7 +23,6 @@ import { fetchPopularStocksLTP, POPULAR_SYMBOLS } from "@/lib/angel-one-api";
 import { NIFTY_50_SYMBOLS } from "@/lib/nifty50-symbols";
 import { useAuth } from "@/context/auth-context";
 import { useAngelOneStatus } from "@/hooks/use-angel-one-status";
-import { WebSocketControls } from "@/components/websocket-controls";
 import { OrderManager } from "@/components/order-manager";
 import { TradingBotControls } from "@/components/trading-bot-controls";
 import { PositionsMonitor } from "@/components/positions-monitor";
@@ -374,7 +373,7 @@ export function LiveAlertsDashboard() {
       
       {/* Control Panel - Always Visible */}
       <div className="grid gap-4 md:grid-cols-2">
-        <WebSocketControls />
+        <PositionsMonitor />
         <TradingBotControls />
       </div>
       
@@ -395,11 +394,8 @@ export function LiveAlertsDashboard() {
         {/* Trading Controls */}
         <OrderManager />
         
-        {/* Positions and Orders Side by Side */}
-        <div className="grid gap-4 md:grid-cols-2">
-          <PositionsMonitor />
-          <OrderBook />
-        </div>
+        {/* Order Book */}
+        <OrderBook />
         
         {/* Live Alerts/Signals Table */}
         <Card>

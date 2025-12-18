@@ -228,7 +228,10 @@ export function StrategyBacktester() {
               </Button>
             </div>
           </div>
+        </div>
 
+        {/* Date Selection - Full Width Row */}
+        <div className="grid grid-cols-1 gap-4">
           {/* Single Date Picker */}
           {dateMode === "single" && (
             <div className="space-y-2">
@@ -247,7 +250,7 @@ export function StrategyBacktester() {
                     {singleDate ? format(singleDate, "PPP") : "Pick a date"}
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-auto p-0">
+                <PopoverContent className="w-auto p-0" align="start">
                   <Calendar
                     mode="single"
                     selected={singleDate}
@@ -263,13 +266,13 @@ export function StrategyBacktester() {
           {dateMode === "range" && (
             <div className="space-y-2">
               <Label>Date Range</Label>
-              <div className="flex gap-2">
+              <div className="grid grid-cols-2 gap-2">
               <Popover>
                 <PopoverTrigger asChild>
                   <Button
                     variant="outline"
                     className={cn(
-                      "flex-1 justify-start text-left font-normal",
+                      "w-full justify-start text-left font-normal",
                       !startDate && "text-muted-foreground"
                     )}
                     disabled={isBacktesting}
@@ -278,7 +281,7 @@ export function StrategyBacktester() {
                     {startDate ? format(startDate, "PPP") : "Start date"}
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-auto p-0">
+                <PopoverContent className="w-auto p-0" align="start">
                   <Calendar
                     mode="single"
                     selected={startDate}
@@ -293,7 +296,7 @@ export function StrategyBacktester() {
                   <Button
                     variant="outline"
                     className={cn(
-                      "flex-1 justify-start text-left font-normal",
+                      "w-full justify-start text-left font-normal",
                       !endDate && "text-muted-foreground"
                     )}
                     disabled={isBacktesting}
@@ -302,7 +305,7 @@ export function StrategyBacktester() {
                     {endDate ? format(endDate, "PPP") : "End date"}
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-auto p-0">
+                <PopoverContent className="w-auto p-0" align="start">
                   <Calendar
                     mode="single"
                     selected={endDate}

@@ -107,14 +107,27 @@ export function StrategyBacktester() {
       });
 
       if (!response.ok) {
-        throw new Error(`Backtest failed: ${response.statusText}`);
+        let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || errorMessage;
+        } catch (e) {
+          // If can't parse JSON, use status text
+        }
+        throw new Error(errorMessage);
       }
 
       const data = await response.json();
+      
+      if (!data.trades || data.trades.length === 0) {
+        setError("No trades found for the selected period. Try a different date range or strategy.");
+      }
+      
       setResults(data.trades || []);
       setSummary(data.summary || null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Backtest failed");
+      const errorMessage = err instanceof Error ? err.message : "Backtest failed";
+      setError(errorMessage);
       console.error("Backtest error:", err);
     } finally {
       setIsBacktesting(false);

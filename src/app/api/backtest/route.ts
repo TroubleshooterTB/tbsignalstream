@@ -16,31 +16,48 @@ export async function POST(request: NextRequest) {
     // Get backend URL from environment or default
     const backendUrl = process.env.BACKEND_URL || 'https://trading-bot-service-vmxfbt7qiq-el.a.run.app';
 
+    const requestBody = {
+      strategy,
+      start_date,
+      end_date,
+      symbols: symbols || 'NIFTY50',
+      capital: capital || 100000,  // Default to ₹1L if not provided
+    };
+
+    console.log('Sending backtest request:', {
+      url: `${backendUrl}/backtest`,
+      body: requestBody
+    });
+
     // Forward request to Cloud Run backend
     const response = await fetch(`${backendUrl}/backtest`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        strategy,
-        start_date,
-        end_date,
-        symbols: symbols || 'NIFTY50',
-        capital: capital || 100000,  // Default to ₹1L if not provided
-      }),
+      body: JSON.stringify(requestBody),
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Backend backtest error:', errorText);
+      let errorText = 'Unknown error';
+      try {
+        errorText = await response.text();
+      } catch (e) {
+        console.error('Could not read error response:', e);
+      }
+      console.error('Backend backtest error:', {
+        status: response.status,
+        statusText: response.statusText,
+        error: errorText
+      });
       return NextResponse.json(
-        { error: `Backtest failed: ${errorText}` },
+        { error: `Backtest failed (${response.status}): ${errorText || response.statusText}` },
         { status: response.status }
       );
     }
 
     const data = await response.json();
+    console.log('Backtest successful:', data.summary);
     return NextResponse.json(data);
 
   } catch (error) {

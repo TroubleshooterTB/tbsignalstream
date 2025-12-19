@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { strategy, start_date, end_date, symbols, capital } = body;
+    const { strategy, start_date, end_date, symbols, capital, custom_params } = body;
 
     // Validate inputs
     if (!strategy || !start_date || !end_date) {
@@ -16,13 +16,19 @@ export async function POST(request: NextRequest) {
     // Get backend URL from environment or default
     const backendUrl = process.env.BACKEND_URL || 'https://trading-bot-service-vmxfbt7qiq-el.a.run.app';
 
-    const requestBody = {
+    const requestBody: any = {
       strategy,
       start_date,
       end_date,
       symbols: symbols || 'NIFTY50',
       capital: capital || 100000,  // Default to ₹1L if not provided
     };
+
+    // Include custom parameters if provided
+    if (custom_params) {
+      requestBody.custom_params = custom_params;
+      console.log('Using custom parameters:', custom_params);
+    }
 
     console.log('Sending backtest request:', {
       url: `${backendUrl}/backtest`,

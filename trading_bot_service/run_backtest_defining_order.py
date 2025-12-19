@@ -40,7 +40,7 @@ logger = logging.getLogger(__name__)
 
 
 def run_backtest(start_date: str, end_date: str, strategy: str = 'defining', 
-                 symbols: str = 'NIFTY50', capital: float = 100000) -> Dict:
+                 symbols: str = 'NIFTY50', capital: float = 100000, custom_params: Optional[Dict] = None) -> Dict:
     """
     Standalone function to run backtest from API endpoint.
     Uses the same credentials as the live bot (from Firestore or environment).
@@ -51,6 +51,7 @@ def run_backtest(start_date: str, end_date: str, strategy: str = 'defining',
         strategy: Strategy name (currently only 'defining' supported)
         symbols: Symbol list name (currently only 'NIFTY50' supported)
         capital: Initial capital amount
+        custom_params: Optional custom strategy parameters for optimization testing
         
     Returns:
         Dictionary with backtest results
@@ -112,6 +113,72 @@ def run_backtest(start_date: str, end_date: str, strategy: str = 'defining',
             raise ValueError("Failed to generate JWT token")
         
         logger.info("✅ Using credentials from environment variables")
+    
+    # Check if this is alpha-ensemble strategy
+    if strategy == 'alpha-ensemble':
+        from alpha_ensemble_strategy import AlphaEnsembleStrategy
+        
+        strategy_instance = AlphaEnsembleStrategy(api_key, jwt_token)
+        
+        # Pass custom parameters if provided
+        if custom_params:
+            logger.info(f"Applying custom parameters to Alpha-Ensemble: {custom_params}")
+            
+            # ADX Threshold
+            if 'adx_threshold' in custom_params:
+                strategy_instance.ADX_MIN_TRENDING = custom_params['adx_threshold']
+                logger.info(f"  → ADX Threshold: {custom_params['adx_threshold']}")
+            
+            # RSI Ranges
+            if 'rsi_oversold' in custom_params:
+                # Oversold = long entry lower bound
+                strategy_instance.RSI_LONG_MIN = custom_params['rsi_oversold']
+                logger.info(f"  → RSI Long Min: {custom_params['rsi_oversold']}")
+                
+            if 'rsi_overbought' in custom_params:
+                # Overbought = long entry upper bound
+                strategy_instance.RSI_LONG_MAX = custom_params['rsi_overbought']
+                # Also adjust short ranges proportionally
+                strategy_instance.RSI_SHORT_MIN = 100 - custom_params['rsi_overbought']
+                strategy_instance.RSI_SHORT_MAX = 100 - custom_params['rsi_oversold']
+                logger.info(f"  → RSI Long Max: {custom_params['rsi_overbought']}")
+                logger.info(f"  → RSI Short Range: {strategy_instance.RSI_SHORT_MIN}-{strategy_instance.RSI_SHORT_MAX}")
+            
+            # Volume Multiplier
+            if 'volume_multiplier' in custom_params:
+                strategy_instance.VOLUME_MULTIPLIER = custom_params['volume_multiplier']
+                logger.info(f"  → Volume Multiplier: {custom_params['volume_multiplier']}x")
+            
+            # Risk:Reward Ratio
+            if 'risk_reward' in custom_params:
+                strategy_instance.RISK_REWARD_RATIO = custom_params['risk_reward']
+                logger.info(f"  → Risk:Reward: 1:{custom_params['risk_reward']}")
+            
+            # Position Size
+            if 'position_size_pct' in custom_params:
+                strategy_instance.RISK_PER_TRADE_PERCENT = custom_params['position_size_pct']
+                logger.info(f"  → Position Size: {custom_params['position_size_pct']}%")
+        
+        # Get symbol list based on universe
+        from test_alpha_ensemble import get_nifty200_watchlist
+        
+        # Use full Nifty 200 or subset based on symbols parameter
+        if symbols == 'NIFTY200' or symbols == 'NIFTY100' or symbols == 'NIFTY50' or symbols == 'NIFTY20':
+            nifty200_watchlist = get_nifty200_watchlist()
+            # For now use full list (276 symbols)
+            symbol_list = nifty200_watchlist
+            logger.info(f"Using {symbols} universe ({len(symbol_list)} symbols)")
+        else:
+            # Default to Nifty 50
+            symbol_list = nifty50_symbols
+        
+        # Run alpha-ensemble backtest
+        return strategy_instance.run_backtest(
+            symbols=symbol_list,
+            start_date=start_date,
+            end_date=end_date,
+            initial_capital=capital
+        )
     
     # Initialize strategy
     strategy_instance = DefiningOrderStrategy(api_key, jwt_token)

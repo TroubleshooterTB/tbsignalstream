@@ -33,31 +33,31 @@ class AlphaEnsembleStrategy:
         self.EMA_20_PERIOD = 20    # 5-minute retest level
         self.VWAP_RETEST_TOLERANCE = 0.1  # Allow 0.1% distance from VWAP for retest
         
-        # ===== LAYER 3: 5-FACTOR EXECUTION FILTERS =====
-        self.ADX_MIN_TRENDING = 25  # MANDATORY: ADX > 25 for trend strength
+        # ===== LAYER 3: 5-FACTOR EXECUTION FILTERS (AGGRESSIVE 65%+ WR) =====
+        self.ADX_MIN_TRENDING = 25  # STRICT: ADX > 25 for strong trends only
         self.ADX_PERIOD = 14
-        self.VOLUME_MULTIPLIER = 2.5  # Tightened from 2.0x (institutional volume)
+        self.VOLUME_MULTIPLIER = 2.0  # 2.0x avg (balance: strict but allows opportunities)
         self.RSI_PERIOD = 14
         
-        # RSI Sweet Spots
-        self.RSI_LONG_MIN = 55   # LONG: RSI 55-65 (strong but not exhausted)
-        self.RSI_LONG_MAX = 65
-        self.RSI_SHORT_MIN = 35  # SHORT: RSI 35-45
-        self.RSI_SHORT_MAX = 45
+        # RSI Sweet Spots (TIGHTER RANGES for 65%+ WR)
+        self.RSI_LONG_MIN = 52   # LONG: RSI 52-62 (strong momentum, tighter)
+        self.RSI_LONG_MAX = 62
+        self.RSI_SHORT_MIN = 38  # SHORT: RSI 38-48 (tighter)
+        self.RSI_SHORT_MAX = 48
         
-        # Distance from EMA
-        self.MAX_DISTANCE_FROM_50EMA = 2.0  # Reject if >2% from 50 EMA
+        # Distance from EMA (STRICTER)
+        self.MAX_DISTANCE_FROM_50EMA = 1.5  # Reject if >1.5% from 50 EMA (was 2.0%)
         
-        # ATR Window (keep from v3.2)
-        self.ATR_MIN_PERCENT = 0.10
-        self.ATR_MAX_PERCENT = 5.0
+        # ATR Window
+        self.ATR_MIN_PERCENT = 0.15  # Slightly higher min (filter out low volatility)
+        self.ATR_MAX_PERCENT = 4.0   # Slightly lower max (avoid extreme volatility)
         self.ATR_PERIOD = 14
         
-        # ===== POSITION & RISK MANAGEMENT =====
-        self.RISK_REWARD_RATIO = 2.5  # 1:2.5 R:R (requires only 40% WR)
-        self.ATR_MULTIPLIER_FOR_SL = 1.5  # SL = 1.5x ATR or retest candle low
-        self.MAXIMUM_SL_PERCENT = 0.7  # Max SL cap: 0.7% of price
-        self.RISK_PER_TRADE_PERCENT = 1.0  # Risk 1% of equity per trade
+        # ===== POSITION & RISK MANAGEMENT (OPTIMIZED FOR 65%+ WR) =====
+        self.RISK_REWARD_RATIO = 3.0  # 1:3.0 R:R (let winners run!)
+        self.ATR_MULTIPLIER_FOR_SL = 1.8  # SL = 1.8x ATR (wider to avoid noise)
+        self.MAXIMUM_SL_PERCENT = 0.6  # Max SL cap: 0.6% of price (tighter)
+        self.RISK_PER_TRADE_PERCENT = 2.0  # Risk 2% per trade (higher conviction)
         self.BREAKEVEN_RATIO = 1.0  # Move SL to BE at 1:1 R:R
         
         # SuperTrend Exit

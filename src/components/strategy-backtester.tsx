@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Calendar } from "@/components/ui/calendar";
@@ -65,6 +66,21 @@ export function StrategyBacktester() {
   const [saveError, setSaveError] = useState<string>("");
   const [isSaving, setIsSaving] = useState(false);
 
+  // Strategy Parameters
+  const [adxThreshold, setAdxThreshold] = useState(25);
+  const [rsiOversold, setRsiOversold] = useState(35);
+  const [rsiOverbought, setRsiOverbought] = useState(65);
+  const [volumeMultiplier, setVolumeMultiplier] = useState(2.5);
+  const [riskReward, setRiskReward] = useState(2.5);
+  const [timeframeAlignment, setTimeframeAlignment] = useState("2TF");
+  const [tradingStartTime, setTradingStartTime] = useState("09:30");
+  const [tradingEndTime, setTradingEndTime] = useState("15:15");
+  const [positionSize, setPositionSize] = useState(2.0);
+  const [maxPositions, setMaxPositions] = useState(3);
+  const [niftyAlignment, setNiftyAlignment] = useState("same");
+  const [symbolUniverse, setSymbolUniverse] = useState("NIFTY200");
+  const [useCustomParams, setUseCustomParams] = useState(false);
+
   // Load saved backtest history
   const loadBacktestHistory = async () => {
     setLoadingHistory(true);
@@ -104,7 +120,7 @@ export function StrategyBacktester() {
         trades: backtestData.trades?.length || 0
       });
       
-      const docRef = await addDoc(collection(db, 'backtest_results'), {
+      const docData: any = {
         strategy: selectedStrategy,
         start_date: format(backtestData.start_date, "yyyy-MM-dd"),
         end_date: format(backtestData.end_date, "yyyy-MM-dd"),
@@ -114,7 +130,30 @@ export function StrategyBacktester() {
         timestamp: Timestamp.now(),
         user: 'local_bot_user',
         created_at: new Date().toISOString()
-      });
+      };
+      
+      // Include custom parameters if used
+      if (useCustomParams) {
+        docData.custom_params = {
+          adx_threshold: adxThreshold,
+          rsi_oversold: rsiOversold,
+          rsi_overbought: rsiOverbought,
+          volume_multiplier: volumeMultiplier,
+          risk_reward: riskReward,
+          timeframe_alignment: timeframeAlignment,
+          trading_start_time: tradingStartTime,
+          trading_end_time: tradingEndTime,
+          position_size_pct: positionSize,
+          max_positions: maxPositions,
+          nifty_alignment: niftyAlignment,
+          symbol_universe: symbolUniverse
+        };
+        docData.used_custom_params = true;
+      } else {
+        docData.used_custom_params = false;
+      }
+      
+      const docRef = await addDoc(collection(db, 'backtest_results'), docData);
       
       console.log('✅ Backtest results saved with ID:', docRef.id);
       setSaveSuccess(true);
@@ -166,18 +205,39 @@ export function StrategyBacktester() {
       const backtestStartDate = dateMode === "single" ? singleDate! : startDate!;
       const backtestEndDate = dateMode === "single" ? singleDate! : endDate!;
       
+      const requestBody: any = {
+        strategy: selectedStrategy,
+        start_date: format(backtestStartDate, "yyyy-MM-dd"),
+        end_date: format(backtestEndDate, "yyyy-MM-dd"),
+        symbols: symbolUniverse,
+        capital: capitalAmount,
+      };
+
+      // Include custom parameters if enabled
+      if (useCustomParams) {
+        requestBody.custom_params = {
+          adx_threshold: adxThreshold,
+          rsi_oversold: rsiOversold,
+          rsi_overbought: rsiOverbought,
+          volume_multiplier: volumeMultiplier,
+          risk_reward: riskReward,
+          timeframe_alignment: timeframeAlignment,
+          trading_hours: {
+            start: tradingStartTime,
+            end: tradingEndTime
+          },
+          position_size_pct: positionSize,
+          max_positions: maxPositions,
+          nifty_alignment: niftyAlignment
+        };
+      }
+
       const response = await fetch("/api/backtest", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          strategy: selectedStrategy,
-          start_date: format(backtestStartDate, "yyyy-MM-dd"),
-          end_date: format(backtestEndDate, "yyyy-MM-dd"),
-          symbols: botConfig.symbols || "NIFTY50",
-          capital: capitalAmount,
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       if (!response.ok) {
@@ -522,11 +582,258 @@ export function StrategyBacktester() {
         </div>
         )}
 
+        {/* Advanced Parameter Controls */}
+        <div className="border rounded-lg p-4 space-y-4 bg-muted/30">
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label className="text-base font-semibold">Advanced Parameters</Label>
+              <p className="text-xs text-muted-foreground">
+                Fine-tune strategy settings for optimization testing
+              </p>
+            </div>
+            <Switch
+              checked={useCustomParams}
+              onCheckedChange={setUseCustomParams}
+              disabled={isBacktesting}
+            />
+          </div>
+
+          {useCustomParams && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4">
+              {/* Symbol Universe */}
+              <div className="space-y-2">
+                <Label>Symbol Universe</Label>
+                <Select
+                  value={symbolUniverse}
+                  onValueChange={setSymbolUniverse}
+                  disabled={isBacktesting}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="NIFTY20">Top 20 Liquid</SelectItem>
+                    <SelectItem value="NIFTY50">Nifty 50</SelectItem>
+                    <SelectItem value="NIFTY100">Nifty 100</SelectItem>
+                    <SelectItem value="NIFTY200">Nifty 200 (276 symbols)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* ADX Threshold */}
+              <div className="space-y-2">
+                <Label className="flex items-center justify-between">
+                  <span>ADX Threshold</span>
+                  <Badge variant="outline">{adxThreshold}</Badge>
+                </Label>
+                <Slider
+                  value={[adxThreshold]}
+                  onValueChange={(v) => setAdxThreshold(v[0])}
+                  min={15}
+                  max={35}
+                  step={1}
+                  disabled={isBacktesting}
+                  className="w-full"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Minimum ADX for trend strength (15=weak, 35=very strong)
+                </p>
+              </div>
+
+              {/* RSI Oversold */}
+              <div className="space-y-2">
+                <Label>RSI Oversold (Long Entry)</Label>
+                <Input
+                  type="number"
+                  value={rsiOversold}
+                  onChange={(e) => setRsiOversold(parseFloat(e.target.value))}
+                  min={20}
+                  max={45}
+                  step={1}
+                  disabled={isBacktesting}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Lower bound for long entries (20-45)
+                </p>
+              </div>
+
+              {/* RSI Overbought */}
+              <div className="space-y-2">
+                <Label>RSI Overbought (Short Entry)</Label>
+                <Input
+                  type="number"
+                  value={rsiOverbought}
+                  onChange={(e) => setRsiOverbought(parseFloat(e.target.value))}
+                  min={55}
+                  max={80}
+                  step={1}
+                  disabled={isBacktesting}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Upper bound for short entries (55-80)
+                </p>
+              </div>
+
+              {/* Volume Multiplier */}
+              <div className="space-y-2">
+                <Label className="flex items-center justify-between">
+                  <span>Volume Multiplier</span>
+                  <Badge variant="outline">{volumeMultiplier.toFixed(1)}x</Badge>
+                </Label>
+                <Slider
+                  value={[volumeMultiplier]}
+                  onValueChange={(v) => setVolumeMultiplier(v[0])}
+                  min={1.0}
+                  max={3.5}
+                  step={0.1}
+                  disabled={isBacktesting}
+                  className="w-full"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Required volume vs 20-day average (1.0=low, 3.5=very high)
+                </p>
+              </div>
+
+              {/* Risk:Reward Ratio */}
+              <div className="space-y-2">
+                <Label className="flex items-center justify-between">
+                  <span>Risk:Reward Ratio</span>
+                  <Badge variant="outline">{riskReward.toFixed(1)}:1</Badge>
+                </Label>
+                <Slider
+                  value={[riskReward]}
+                  onValueChange={(v) => setRiskReward(v[0])}
+                  min={2.0}
+                  max={4.0}
+                  step={0.5}
+                  disabled={isBacktesting}
+                  className="w-full"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Target profit relative to risk (2.0=conservative, 4.0=aggressive)
+                </p>
+              </div>
+
+              {/* Timeframe Alignment */}
+              <div className="space-y-2">
+                <Label>Timeframe Alignment</Label>
+                <Select
+                  value={timeframeAlignment}
+                  onValueChange={setTimeframeAlignment}
+                  disabled={isBacktesting}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1TF">1 Timeframe (5min only)</SelectItem>
+                    <SelectItem value="2TF">2 Timeframes (5min + 15min)</SelectItem>
+                    <SelectItem value="3TF">3 Timeframes (5min + 15min + hourly)</SelectItem>
+                    <SelectItem value="4TF">All 4 Timeframes aligned</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  More timeframes = higher quality but fewer trades
+                </p>
+              </div>
+
+              {/* Trading Hours Start */}
+              <div className="space-y-2">
+                <Label>Trading Start Time</Label>
+                <Input
+                  type="time"
+                  value={tradingStartTime}
+                  onChange={(e) => setTradingStartTime(e.target.value)}
+                  disabled={isBacktesting}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Earliest entry time (Market opens: 09:15)
+                </p>
+              </div>
+
+              {/* Trading Hours End */}
+              <div className="space-y-2">
+                <Label>Trading End Time</Label>
+                <Input
+                  type="time"
+                  value={tradingEndTime}
+                  onChange={(e) => setTradingEndTime(e.target.value)}
+                  disabled={isBacktesting}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Latest entry time (Market closes: 15:30)
+                </p>
+              </div>
+
+              {/* Position Size */}
+              <div className="space-y-2">
+                <Label className="flex items-center justify-between">
+                  <span>Position Size</span>
+                  <Badge variant="outline">{positionSize.toFixed(1)}%</Badge>
+                </Label>
+                <Slider
+                  value={[positionSize]}
+                  onValueChange={(v) => setPositionSize(v[0])}
+                  min={1.0}
+                  max={5.0}
+                  step={0.5}
+                  disabled={isBacktesting}
+                  className="w-full"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Capital allocated per trade (1%=conservative, 5%=aggressive)
+                </p>
+              </div>
+
+              {/* Max Positions */}
+              <div className="space-y-2">
+                <Label>Max Concurrent Positions</Label>
+                <Input
+                  type="number"
+                  value={maxPositions}
+                  onChange={(e) => setMaxPositions(parseInt(e.target.value))}
+                  min={1}
+                  max={10}
+                  step={1}
+                  disabled={isBacktesting}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Maximum simultaneous trades (1-10)
+                </p>
+              </div>
+
+              {/* Nifty Alignment */}
+              <div className="space-y-2">
+                <Label>Nifty Alignment</Label>
+                <Select
+                  value={niftyAlignment}
+                  onValueChange={setNiftyAlignment}
+                  disabled={isBacktesting}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">None Required</SelectItem>
+                    <SelectItem value="same">Same Direction</SelectItem>
+                    <SelectItem value="strong">Strong ({'>'}0.3%)</SelectItem>
+                    <SelectItem value="very_strong">Very Strong ({'>'}0.5%)</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Require Nifty index trend confirmation
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+
         {/* Run Button */}
         <Button
           onClick={runBacktest}
           disabled={isBacktesting || (dateMode === "single" ? !singleDate : (!startDate || !endDate))}
           className="w-full"
+          size="lg"
         >
           {isBacktesting ? (
             <>
@@ -536,7 +843,7 @@ export function StrategyBacktester() {
           ) : (
             <>
               <Play className="mr-2 h-4 w-4" />
-              Run Backtest
+              Run Backtest {useCustomParams && "(Custom Parameters)"}
             </>
           )}
         </Button>
@@ -566,7 +873,8 @@ export function StrategyBacktester() {
                       start_date: backtestStartDate,
                       end_date: backtestEndDate,
                       summary: summary,
-                      trades: results
+                      trades: results,
+                      custom_params_used: useCustomParams
                     });
                   }}
                   disabled={isSaving}
@@ -745,6 +1053,9 @@ export function StrategyBacktester() {
                         <div className="flex items-center justify-between">
                           <div>
                             <Badge variant="outline">{result.strategy}</Badge>
+                            {result.used_custom_params && (
+                              <Badge variant="secondary" className="ml-2">Custom Params</Badge>
+                            )}
                             <span className="text-sm text-muted-foreground ml-2">
                               {result.start_date} to {result.end_date}
                             </span>
@@ -753,6 +1064,49 @@ export function StrategyBacktester() {
                             {result.summary?.win_rate?.toFixed(1)}% WR
                           </Badge>
                         </div>
+                        
+                        {/* Show custom parameters if used */}
+                        {result.used_custom_params && result.custom_params && (
+                          <div className="grid grid-cols-3 gap-2 p-3 bg-muted/50 rounded-md text-xs">
+                            <div>
+                              <span className="text-muted-foreground">ADX:</span>{' '}
+                              <span className="font-medium">{result.custom_params.adx_threshold}</span>
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground">RSI:</span>{' '}
+                              <span className="font-medium">{result.custom_params.rsi_oversold}-{result.custom_params.rsi_overbought}</span>
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground">Volume:</span>{' '}
+                              <span className="font-medium">{result.custom_params.volume_multiplier}x</span>
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground">R:R:</span>{' '}
+                              <span className="font-medium">1:{result.custom_params.risk_reward}</span>
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground">TF:</span>{' '}
+                              <span className="font-medium">{result.custom_params.timeframe_alignment}</span>
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground">Universe:</span>{' '}
+                              <span className="font-medium">{result.custom_params.symbol_universe}</span>
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground">Hours:</span>{' '}
+                              <span className="font-medium">{result.custom_params.trading_start_time}-{result.custom_params.trading_end_time}</span>
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground">Size:</span>{' '}
+                              <span className="font-medium">{result.custom_params.position_size_pct}%</span>
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground">Max Pos:</span>{' '}
+                              <span className="font-medium">{result.custom_params.max_positions}</span>
+                            </div>
+                          </div>
+                        )}
+                        
                         <div className="grid grid-cols-5 gap-4 text-sm">
                           <div>
                             <div className="text-muted-foreground">Trades</div>

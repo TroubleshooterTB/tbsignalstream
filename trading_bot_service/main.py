@@ -754,6 +754,7 @@ def run_backtest():
         end_date = data.get('end_date')      # Format: YYYY-MM-DD
         symbols = data.get('symbols', 'NIFTY50')
         capital = data.get('capital', 100000)  # Default to ₹1L if not provided
+        custom_params = data.get('custom_params')  # Custom strategy parameters
         
         if not start_date or not end_date:
             return jsonify({'error': 'start_date and end_date are required'}), 400
@@ -767,6 +768,8 @@ def run_backtest():
             return jsonify({'error': 'Invalid capital amount'}), 400
         
         logger.info(f"Starting backtest: {strategy} from {start_date} to {end_date} with capital ₹{capital:,.0f}")
+        if custom_params:
+            logger.info(f"Using custom parameters: {custom_params}")
         
         # Import backtest runner
         from run_backtest_defining_order import run_backtest as execute_backtest
@@ -778,7 +781,8 @@ def run_backtest():
             end_date=end_date,
             strategy=strategy,
             symbols=symbols,
-            capital=capital
+            capital=capital,
+            custom_params=custom_params
         )
         
         logger.info(f"Backtest completed. Results type: {type(results)}, Keys: {results.keys() if isinstance(results, dict) else 'N/A'}")

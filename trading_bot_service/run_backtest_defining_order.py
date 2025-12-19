@@ -115,59 +115,26 @@ def run_backtest(start_date: str, end_date: str, strategy: str = 'defining',
         
         logger.info("✅ Using credentials from environment variables")
     
-    # Define NIFTY 50 symbols (complete list - same as __main__ section below)
-    nifty50_symbols = [
-        {'symbol': 'RELIANCE-EQ', 'token': '2885'},
-        {'symbol': 'TCS-EQ', 'token': '11536'},
-        {'symbol': 'HDFCBANK-EQ', 'token': '1333'},
-        {'symbol': 'INFY-EQ', 'token': '1594'},
-        {'symbol': 'ICICIBANK-EQ', 'token': '4963'},
-        {'symbol': 'HINDUNILVR-EQ', 'token': '1394'},
-        {'symbol': 'BHARTIARTL-EQ', 'token': '10604'},
-        {'symbol': 'ITC-EQ', 'token': '1660'},
-        {'symbol': 'KOTAKBANK-EQ', 'token': '1922'},
-        {'symbol': 'SBIN-EQ', 'token': '3045'},
-        {'symbol': 'BAJFINANCE-EQ', 'token': '317'},
-        {'symbol': 'ASIANPAINT-EQ', 'token': '236'},
-        {'symbol': 'HCLTECH-EQ', 'token': '7229'},
-        {'symbol': 'AXISBANK-EQ', 'token': '5900'},
-        {'symbol': 'LT-EQ', 'token': '11483'},
-        {'symbol': 'MARUTI-EQ', 'token': '10999'},
-        {'symbol': 'SUNPHARMA-EQ', 'token': '3351'},
-        {'symbol': 'TITAN-EQ', 'token': '3506'},
-        {'symbol': 'NESTLEIND-EQ', 'token': '17963'},
-        {'symbol': 'ULTRACEMCO-EQ', 'token': '11532'},
-        {'symbol': 'WIPRO-EQ', 'token': '3787'},
-        {'symbol': 'TECHM-EQ', 'token': '13538'},
-        {'symbol': 'ADANIENT-EQ', 'token': '25'},
-        {'symbol': 'POWERGRID-EQ', 'token': '14977'},
-        {'symbol': 'NTPC-EQ', 'token': '11630'},
-        {'symbol': 'ONGC-EQ', 'token': '2475'},
-        {'symbol': 'TATAMOTORS-EQ', 'token': '3456'},
-        {'symbol': 'TATASTEEL-EQ', 'token': '3499'},
-        {'symbol': 'ADANIPORTS-EQ', 'token': '15083'},
-        {'symbol': 'M&M-EQ', 'token': '2031'},
-        {'symbol': 'BAJAJFINSV-EQ', 'token': '16675'},
-        {'symbol': 'HINDALCO-EQ', 'token': '1363'},
-        {'symbol': 'COALINDIA-EQ', 'token': '20374'},
-        {'symbol': 'JSWSTEEL-EQ', 'token': '11723'},
-        {'symbol': 'INDUSINDBK-EQ', 'token': '5258'},
-        {'symbol': 'GRASIM-EQ', 'token': '1232'},
-        {'symbol': 'BAJAJ-AUTO-EQ', 'token': '16669'},
-        {'symbol': 'TATACONSUM-EQ', 'token': '3432'},
-        {'symbol': 'DIVISLAB-EQ', 'token': '10940'},
-        {'symbol': 'BRITANNIA-EQ', 'token': '547'},
-        {'symbol': 'EICHERMOT-EQ', 'token': '910'},
-        {'symbol': 'HEROMOTOCO-EQ', 'token': '1348'},
-        {'symbol': 'CIPLA-EQ', 'token': '694'},
-        {'symbol': 'APOLLOHOSP-EQ', 'token': '157'},
-        {'symbol': 'DRREDDY-EQ', 'token': '881'},
-        {'symbol': 'BPCL-EQ', 'token': '526'},
-        {'symbol': 'SHRIRAMFIN-EQ', 'token': '4306'},
-        {'symbol': 'TRENT-EQ', 'token': '1964'},
-        {'symbol': 'ADANIGREEN-EQ', 'token': '25615'},
-        {'symbol': 'LTIM-EQ', 'token': '17818'},
-    ]
+    # Import the complete NIFTY 200 watchlist
+    from nifty200_watchlist import NIFTY200_WATCHLIST
+    
+    # Create symbol universes based on selection
+    # NIFTY 50 = First 50 symbols from watchlist
+    # NIFTY 100 = First 100 symbols from watchlist
+    # NIFTY 200 = All symbols from watchlist
+    if symbols == 'NIFTY50':
+        selected_symbols = NIFTY200_WATCHLIST[:50]
+        logger.info(f"📊 Using NIFTY 50 universe ({len(selected_symbols)} symbols)")
+    elif symbols == 'NIFTY100':
+        selected_symbols = NIFTY200_WATCHLIST[:100]
+        logger.info(f"📊 Using NIFTY 100 universe ({len(selected_symbols)} symbols)")
+    elif symbols == 'NIFTY200':
+        selected_symbols = NIFTY200_WATCHLIST
+        logger.info(f"📊 Using NIFTY 200 universe ({len(selected_symbols)} symbols)")
+    else:
+        # Default to NIFTY 50 if invalid input
+        selected_symbols = NIFTY200_WATCHLIST[:50]
+        logger.warning(f"⚠️  Invalid universe '{symbols}', defaulting to NIFTY 50 ({len(selected_symbols)} symbols)")
     
     # Check if this is alpha-ensemble strategy
     if strategy == 'alpha-ensemble':
@@ -208,9 +175,9 @@ def run_backtest(start_date: str, end_date: str, strategy: str = 'defining',
         else:
             logger.info(f"ℹ️  Using Alpha-Ensemble default parameters")
         
-        # Run alpha-ensemble backtest with Nifty 50
+        # Run alpha-ensemble backtest with selected universe
         return strategy_instance.run_backtest(
-            symbols=nifty50_symbols,
+            symbols=selected_symbols,
             start_date=start_date,
             end_date=end_date,
             initial_capital=capital
@@ -219,9 +186,9 @@ def run_backtest(start_date: str, end_date: str, strategy: str = 'defining',
     # Initialize defining-order strategy (default)
     strategy_instance = DefiningOrderStrategy(api_key, jwt_token)
     
-    # Run backtest
+    # Run backtest with selected universe
     return strategy_instance.run_backtest(
-        symbols=nifty50_symbols,
+        symbols=selected_symbols,
         start_date=start_date,
         end_date=end_date,
         initial_capital=capital

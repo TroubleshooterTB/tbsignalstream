@@ -78,7 +78,7 @@ export function StrategyBacktester() {
   const [positionSize, setPositionSize] = useState(2.0);
   const [maxPositions, setMaxPositions] = useState(3);
   const [niftyAlignment, setNiftyAlignment] = useState("same");
-  const [symbolUniverse, setSymbolUniverse] = useState("NIFTY200");
+  const [symbolUniverse, setSymbolUniverse] = useState("NIFTY50");
   const [useCustomParams, setUseCustomParams] = useState(false);
 
   // Load saved backtest history
@@ -614,7 +614,7 @@ export function StrategyBacktester() {
                   <SelectContent>
                     <SelectItem value="NIFTY50">Nifty 50 (50 symbols)</SelectItem>
                     <SelectItem value="NIFTY100">Nifty 100 (100 symbols)</SelectItem>
-                    <SelectItem value="NIFTY200">Nifty 200 (200 symbols)</SelectItem>
+                    <SelectItem value="NIFTY200">Nifty 200 (200+ symbols)</SelectItem>
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground">

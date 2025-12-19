@@ -782,9 +782,13 @@ def run_backtest():
         except (ValueError, TypeError):
             return jsonify({'error': 'Invalid capital amount'}), 400
         
-        logger.info(f"Starting backtest: {strategy} from {start_date} to {end_date} with capital ₹{capital:,.0f}")
+        logger.info(f"Starting backtest: {strategy} from {start_date} to {end_date} with capital ₹{capital:,.0f}, symbols={symbols}")
         if custom_params:
             logger.info(f"Using custom parameters: {custom_params}")
+        
+        # Warn about NIFTY200 timeout risk with custom params
+        if symbols == 'NIFTY200' and custom_params:
+            logger.warning("⚠️ NIFTY200 with custom params may timeout. Consider using NIFTY100 instead.")
         
         # Import backtest runner
         from run_backtest_defining_order import run_backtest as execute_backtest
@@ -858,8 +862,14 @@ def run_backtest():
         }), 200
     
     except Exception as e:
-        logger.error(f"Backtest error: {e}", exc_info=True)
-        return jsonify({'error': str(e)}), 500
+        error_msg = str(e)
+        logger.error(f"Backtest error: {error_msg}", exc_info=True)
+        
+        # Provide helpful message for timeout errors
+        if 'timeout' in error_msg.lower() or 'deadline' in error_msg.lower():
+            error_msg = f"Backtest timeout - processing {data.get('symbols', 'NIFTY50')} takes too long. Try NIFTY50 or NIFTY100 instead."
+        
+        return jsonify({'error': error_msg}), 500
 
 
 if __name__ == '__main__':

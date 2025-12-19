@@ -612,12 +612,14 @@ export function StrategyBacktester() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="NIFTY20">Top 20 Liquid</SelectItem>
-                    <SelectItem value="NIFTY50">Nifty 50</SelectItem>
-                    <SelectItem value="NIFTY100">Nifty 100</SelectItem>
-                    <SelectItem value="NIFTY200">Nifty 200 (276 symbols)</SelectItem>
+                    <SelectItem value="NIFTY50">Nifty 50 (50 symbols)</SelectItem>
+                    <SelectItem value="NIFTY100">Nifty 100 (100 symbols)</SelectItem>
+                    <SelectItem value="NIFTY200">Nifty 200 (200 symbols)</SelectItem>
                   </SelectContent>
                 </Select>
+                <p className="text-xs text-muted-foreground">
+                  Select the stock universe for backtesting
+                </p>
               </div>
 
               {/* ADX Threshold */}

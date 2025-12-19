@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -11,10 +11,13 @@ import { Switch } from "@/components/ui/switch";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
-import { Calendar as CalendarIcon, TrendingUp, TrendingDown, Loader2, BarChart3, Play } from "lucide-react";
+import { Calendar as CalendarIcon, TrendingUp, TrendingDown, Loader2, BarChart3, Play, History, Save } from "lucide-react";
 import { useTradingContext } from "@/context/trading-context";
+import { db } from "@/lib/firebase";
+import { collection, addDoc, query, orderBy, limit, getDocs, Timestamp } from "firebase/firestore";
 
 type BacktestResult = {
   symbol: string;
@@ -56,6 +59,61 @@ export function StrategyBacktester() {
   const [results, setResults] = useState<BacktestResult[]>([]);
   const [summary, setSummary] = useState<BacktestSummary | null>(null);
   const [error, setError] = useState<string>("");
+  const [savedResults, setSavedResults] = useState<any[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+
+  // Load saved backtest history
+  const loadBacktestHistory = async () => {
+    setLoadingHistory(true);
+    try {
+      const q = query(
+        collection(db, 'backtest_results'),
+        orderBy('timestamp', 'desc'),
+        limit(20)
+      );
+      const querySnapshot = await getDocs(q);
+      const history = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setSavedResults(history);
+    } catch (err) {
+      console.error('Error loading backtest history:', err);
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
+
+  // Load history on component mount
+  useEffect(() => {
+    loadBacktestHistory();
+  }, []);
+
+  // Save backtest results to Firestore
+  const saveBacktestResults = async (backtestData: any) => {
+    try {
+      const docRef = await addDoc(collection(db, 'backtest_results'), {
+        strategy: selectedStrategy,
+        start_date: format(backtestData.start_date, "yyyy-MM-dd"),
+        end_date: format(backtestData.end_date, "yyyy-MM-dd"),
+        capital: parseFloat(capital),
+        summary: backtestData.summary,
+        trades: backtestData.trades,
+        timestamp: Timestamp.now(),
+        user: 'local_bot_user' // You can replace with actual user ID
+      });
+      
+      console.log('Backtest results saved with ID:', docRef.id);
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3000);
+      
+      // Reload history to show new result
+      await loadBacktestHistory();
+    } catch (err) {
+      console.error('Error saving backtest results:', err);
+    }
+  };
 
   const runBacktest = async () => {
     // Validate based on mode
@@ -125,6 +183,16 @@ export function StrategyBacktester() {
       
       setResults(data.trades || []);
       setSummary(data.summary || null);
+      
+      // Auto-save results to Firestore
+      if (data.summary && data.trades) {
+        await saveBacktestResults({
+          start_date: backtestStartDate,
+          end_date: backtestEndDate,
+          summary: data.summary,
+          trades: data.trades
+        });
+      }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Backtest failed";
       setError(errorMessage);
@@ -167,15 +235,38 @@ export function StrategyBacktester() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <BarChart3 className="h-5 w-5" />
-          Strategy Backtesting
-        </CardTitle>
-        <CardDescription>
-          Test strategy performance on historical data (independent of live trading)
-        </CardDescription>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <BarChart3 className="h-5 w-5" />
+              Strategy Backtesting
+            </CardTitle>
+            <CardDescription>
+              Test strategy performance on historical data (independent of live trading)
+            </CardDescription>
+          </div>
+          {saveSuccess && (
+            <Badge variant="default" className="flex items-center gap-1">
+              <Save className="h-3 w-3" />
+              Saved!
+            </Badge>
+          )}
+        </div>
       </CardHeader>
       <CardContent className="space-y-6">
+        <Tabs defaultValue="backtest" className="w-full">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="backtest">
+              <Play className="h-4 w-4 mr-2" />
+              Run Backtest
+            </TabsTrigger>
+            <TabsTrigger value="history">
+              <History className="h-4 w-4 mr-2" />
+              History ({savedResults.length})
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="backtest" className="space-y-6 mt-6">
         {/* Controls */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {/* Strategy Selection */}
@@ -573,6 +664,73 @@ export function StrategyBacktester() {
             />
           </div>
         </div>
+
+          </TabsContent>
+
+          <TabsContent value="history" className="space-y-4 mt-6">
+            {loadingHistory ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin" />
+              </div>
+            ) : savedResults.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <History className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                <p>No saved backtest results yet</p>
+                <p className="text-sm">Run a backtest to save results automatically</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <h3 className="font-semibold">Recent Backtest Results</h3>
+                <div className="space-y-2">
+                  {savedResults.map((result) => (
+                    <Card key={result.id} className="p-4">
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <Badge variant="outline">{result.strategy}</Badge>
+                            <span className="text-sm text-muted-foreground ml-2">
+                              {result.start_date} to {result.end_date}
+                            </span>
+                          </div>
+                          <Badge variant={result.summary?.win_rate >= 50 ? "default" : "destructive"}>
+                            {result.summary?.win_rate?.toFixed(1)}% WR
+                          </Badge>
+                        </div>
+                        <div className="grid grid-cols-5 gap-4 text-sm">
+                          <div>
+                            <div className="text-muted-foreground">Trades</div>
+                            <div className="font-medium">{result.summary?.total_trades || 0}</div>
+                          </div>
+                          <div>
+                            <div className="text-muted-foreground">P&L</div>
+                            <div className={cn("font-medium", result.summary?.total_pnl >= 0 ? "text-green-600" : "text-red-600")}>
+                              ₹{result.summary?.total_pnl?.toFixed(0) || 0}
+                            </div>
+                          </div>
+                          <div>
+                            <div className="text-muted-foreground">Profit Factor</div>
+                            <div className="font-medium">{result.summary?.profit_factor?.toFixed(2) || 0}</div>
+                          </div>
+                          <div>
+                            <div className="text-muted-foreground">Avg Win</div>
+                            <div className="font-medium text-green-600">₹{result.summary?.avg_win?.toFixed(0) || 0}</div>
+                          </div>
+                          <div>
+                            <div className="text-muted-foreground">Avg Loss</div>
+                            <div className="font-medium text-red-600">₹{result.summary?.avg_loss?.toFixed(0) || 0}</div>
+                          </div>
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          Saved: {result.timestamp?.toDate ? result.timestamp.toDate().toLocaleString() : 'Unknown'}
+                        </div>
+                      </div>
+                    </Card>
+                  ))}
+                </div>
+              </div>
+            )}
+          </TabsContent>
+        </Tabs>
       </CardContent>
     </Card>
   );

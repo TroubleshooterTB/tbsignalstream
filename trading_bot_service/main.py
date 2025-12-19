@@ -31,11 +31,26 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Initialize Firebase Admin
+# Initialize Firebase Admin with ADC (Application Default Credentials)
+# On Cloud Run, this automatically uses the service account
 if not firebase_admin._apps:
-    firebase_admin.initialize_app()
+    try:
+        # Try with explicit credentials first (for local dev with key file)
+        cred_path = os.path.join(os.path.dirname(__file__), 'firestore-key.json')
+        if os.path.exists(cred_path):
+            cred = credentials.Certificate(cred_path)
+            firebase_admin.initialize_app(cred)
+            logger.info("✅ Firebase initialized with service account key")
+        else:
+            # Use Application Default Credentials (Cloud Run, Cloud Functions)
+            firebase_admin.initialize_app()
+            logger.info("✅ Firebase initialized with ADC")
+    except Exception as e:
+        logger.error(f"❌ Failed to initialize Firebase: {e}")
+        raise
 
 db = firestore.client()
+logger.info("✅ Firestore client initialized")
 
 # Load Angel One API key from environment (check multiple possible names)
 ANGEL_ONE_API_KEY = (

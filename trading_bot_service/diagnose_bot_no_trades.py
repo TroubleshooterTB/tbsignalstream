@@ -89,7 +89,7 @@ try:
             data = sig.to_dict()
             print(f"   • {data.get('symbol', 'N/A')} @ {data.get('timestamp', 'N/A')}")
             print(f"     Pattern: {data.get('pattern_type', 'N/A')}")
-            print(f("     Confidence: {data.get('confidence', 0):.1f}%"))
+            print(f"     Confidence: {data.get('confidence', 0):.1f}%")
             print(f"     Entry: ₹{data.get('entry_price', 0):.2f}")
             
 except Exception as e:

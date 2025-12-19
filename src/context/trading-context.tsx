@@ -18,7 +18,7 @@ interface TradingState {
   botConfig: {
     symbols: string;
     mode: 'paper' | 'live';
-    strategy: 'pattern' | 'ironclad' | 'both' | 'defining';
+    strategy: 'pattern' | 'ironclad' | 'both' | 'defining' | 'alpha-ensemble';
     maxPositions: string;
     positionSize: string;
   };

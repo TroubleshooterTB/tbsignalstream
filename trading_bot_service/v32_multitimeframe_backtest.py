@@ -79,7 +79,7 @@ def run_multi_timeframe_backtest():
     
     if not totp or len(totp) != 6:
         logger.error("❌ Invalid TOTP. Cannot proceed.")
-        returnapi_key
+        return None
     
     # Generate JWT token using the backtest module's function
     logger.info("\n🔐 Authenticating with Angel One API...")
@@ -87,7 +87,7 @@ def run_multi_timeframe_backtest():
     
     if not jwt_token:
         logger.error("❌ Failed to authenticate. Cannot proceed.")
-        return
+        return None
     
     logger.info("✅ Authentication successful!")
     

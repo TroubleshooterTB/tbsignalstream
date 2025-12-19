@@ -40,7 +40,8 @@ logger = logging.getLogger(__name__)
 
 
 def run_backtest(start_date: str, end_date: str, strategy: str = 'defining', 
-                 symbols: str = 'NIFTY50', capital: float = 100000, custom_params: Optional[Dict] = None) -> Dict:
+                 symbols: str = 'NIFTY50', capital: float = 100000, 
+                 custom_params: Optional[Dict] = None) -> Dict:
     """
     Standalone function to run backtest from API endpoint.
     Uses the same credentials as the live bot (from Firestore or environment).
@@ -51,7 +52,7 @@ def run_backtest(start_date: str, end_date: str, strategy: str = 'defining',
         strategy: Strategy name (currently only 'defining' supported)
         symbols: Symbol list name (currently only 'NIFTY50' supported)
         capital: Initial capital amount
-        custom_params: Optional custom strategy parameters for optimization testing
+        custom_params: Optional custom strategy parameters for optimization
         
     Returns:
         Dictionary with backtest results
@@ -114,26 +115,59 @@ def run_backtest(start_date: str, end_date: str, strategy: str = 'defining',
         
         logger.info("✅ Using credentials from environment variables")
     
-    # Import official NIFTY 200 watchlist (validated with correct tokens)
-    try:
-        from nifty200_watchlist import NIFTY200_WATCHLIST
-        # Create Nifty 50 and Nifty 100 subsets from official list
-        nifty50_symbols = NIFTY200_WATCHLIST[:50]  # First 50 symbols
-        nifty100_symbols = NIFTY200_WATCHLIST[:100]  # First 100 symbols
-        nifty200_symbols = NIFTY200_WATCHLIST  # All symbols (276)
-        logger.info(f"✅ Loaded symbol lists: N50={len(nifty50_symbols)}, N100={len(nifty100_symbols)}, N200={len(nifty200_symbols)}")
-    except Exception as e:
-        logger.error(f"❌ Failed to load watchlist: {e}")
-        # Fallback to hardcoded Nifty 50
-        nifty50_symbols = [
-            {'symbol': 'RELIANCE-EQ', 'token': '2885'},
-            {'symbol': 'TCS-EQ', 'token': '11536'},
-            {'symbol': 'HDFCBANK-EQ', 'token': '1333'},
-            {'symbol': 'INFY-EQ', 'token': '1594'},
-            {'symbol': 'ICICIBANK-EQ', 'token': '4963'},
-        ]
-        nifty100_symbols = nifty50_symbols
-        nifty200_symbols = nifty50_symbols
+    # Define NIFTY 50 symbols (complete list - same as __main__ section below)
+    nifty50_symbols = [
+        {'symbol': 'RELIANCE-EQ', 'token': '2885'},
+        {'symbol': 'TCS-EQ', 'token': '11536'},
+        {'symbol': 'HDFCBANK-EQ', 'token': '1333'},
+        {'symbol': 'INFY-EQ', 'token': '1594'},
+        {'symbol': 'ICICIBANK-EQ', 'token': '4963'},
+        {'symbol': 'HINDUNILVR-EQ', 'token': '1394'},
+        {'symbol': 'BHARTIARTL-EQ', 'token': '10604'},
+        {'symbol': 'ITC-EQ', 'token': '1660'},
+        {'symbol': 'KOTAKBANK-EQ', 'token': '1922'},
+        {'symbol': 'SBIN-EQ', 'token': '3045'},
+        {'symbol': 'BAJFINANCE-EQ', 'token': '317'},
+        {'symbol': 'ASIANPAINT-EQ', 'token': '236'},
+        {'symbol': 'HCLTECH-EQ', 'token': '7229'},
+        {'symbol': 'AXISBANK-EQ', 'token': '5900'},
+        {'symbol': 'LT-EQ', 'token': '11483'},
+        {'symbol': 'MARUTI-EQ', 'token': '10999'},
+        {'symbol': 'SUNPHARMA-EQ', 'token': '3351'},
+        {'symbol': 'TITAN-EQ', 'token': '3506'},
+        {'symbol': 'NESTLEIND-EQ', 'token': '17963'},
+        {'symbol': 'ULTRACEMCO-EQ', 'token': '11532'},
+        {'symbol': 'WIPRO-EQ', 'token': '3787'},
+        {'symbol': 'TECHM-EQ', 'token': '13538'},
+        {'symbol': 'ADANIENT-EQ', 'token': '25'},
+        {'symbol': 'POWERGRID-EQ', 'token': '14977'},
+        {'symbol': 'NTPC-EQ', 'token': '11630'},
+        {'symbol': 'ONGC-EQ', 'token': '2475'},
+        {'symbol': 'TATAMOTORS-EQ', 'token': '3456'},
+        {'symbol': 'TATASTEEL-EQ', 'token': '3499'},
+        {'symbol': 'ADANIPORTS-EQ', 'token': '15083'},
+        {'symbol': 'M&M-EQ', 'token': '2031'},
+        {'symbol': 'BAJAJFINSV-EQ', 'token': '16675'},
+        {'symbol': 'HINDALCO-EQ', 'token': '1363'},
+        {'symbol': 'COALINDIA-EQ', 'token': '20374'},
+        {'symbol': 'JSWSTEEL-EQ', 'token': '11723'},
+        {'symbol': 'INDUSINDBK-EQ', 'token': '5258'},
+        {'symbol': 'GRASIM-EQ', 'token': '1232'},
+        {'symbol': 'BAJAJ-AUTO-EQ', 'token': '16669'},
+        {'symbol': 'TATACONSUM-EQ', 'token': '3432'},
+        {'symbol': 'DIVISLAB-EQ', 'token': '10940'},
+        {'symbol': 'BRITANNIA-EQ', 'token': '547'},
+        {'symbol': 'EICHERMOT-EQ', 'token': '910'},
+        {'symbol': 'HEROMOTOCO-EQ', 'token': '1348'},
+        {'symbol': 'CIPLA-EQ', 'token': '694'},
+        {'symbol': 'APOLLOHOSP-EQ', 'token': '157'},
+        {'symbol': 'DRREDDY-EQ', 'token': '881'},
+        {'symbol': 'BPCL-EQ', 'token': '526'},
+        {'symbol': 'SHRIRAMFIN-EQ', 'token': '4306'},
+        {'symbol': 'TRENT-EQ', 'token': '1964'},
+        {'symbol': 'ADANIGREEN-EQ', 'token': '25615'},
+        {'symbol': 'LTIM-EQ', 'token': '17818'},
+    ]
     
     # Check if this is alpha-ensemble strategy
     if strategy == 'alpha-ensemble':
@@ -141,71 +175,51 @@ def run_backtest(start_date: str, end_date: str, strategy: str = 'defining',
         
         strategy_instance = AlphaEnsembleStrategy(api_key, jwt_token)
         
-        # Pass custom parameters if provided
+        # Apply custom parameters if provided (OPTIONAL - uses strategy defaults if None)
         if custom_params:
-            logger.info(f"Applying custom parameters to Alpha-Ensemble: {custom_params}")
+            logger.info(f"✅ Applying custom parameters to Alpha-Ensemble")
             
-            # ADX Threshold
+            # Only apply parameters that are actually provided
             if 'adx_threshold' in custom_params:
                 strategy_instance.ADX_MIN_TRENDING = custom_params['adx_threshold']
-                logger.info(f"  → ADX Threshold: {custom_params['adx_threshold']}")
+                logger.info(f"  → ADX: {custom_params['adx_threshold']}")
             
-            # RSI Ranges
             if 'rsi_oversold' in custom_params:
-                # Oversold = long entry lower bound
                 strategy_instance.RSI_LONG_MIN = custom_params['rsi_oversold']
-                logger.info(f"  → RSI Long Min: {custom_params['rsi_oversold']}")
+                logger.info(f"  → RSI Oversold: {custom_params['rsi_oversold']}")
                 
             if 'rsi_overbought' in custom_params:
-                # Overbought = long entry upper bound
                 strategy_instance.RSI_LONG_MAX = custom_params['rsi_overbought']
-                # Also adjust short ranges proportionally
                 strategy_instance.RSI_SHORT_MIN = 100 - custom_params['rsi_overbought']
                 strategy_instance.RSI_SHORT_MAX = 100 - custom_params['rsi_oversold']
-                logger.info(f"  → RSI Long Max: {custom_params['rsi_overbought']}")
-                logger.info(f"  → RSI Short Range: {strategy_instance.RSI_SHORT_MIN}-{strategy_instance.RSI_SHORT_MAX}")
+                logger.info(f"  → RSI Overbought: {custom_params['rsi_overbought']}")
             
-            # Volume Multiplier
             if 'volume_multiplier' in custom_params:
                 strategy_instance.VOLUME_MULTIPLIER = custom_params['volume_multiplier']
-                logger.info(f"  → Volume Multiplier: {custom_params['volume_multiplier']}x")
+                logger.info(f"  → Volume: {custom_params['volume_multiplier']}x")
             
-            # Risk:Reward Ratio
             if 'risk_reward' in custom_params:
                 strategy_instance.RISK_REWARD_RATIO = custom_params['risk_reward']
                 logger.info(f"  → Risk:Reward: 1:{custom_params['risk_reward']}")
             
-            # Position Size
             if 'position_size_pct' in custom_params:
                 strategy_instance.RISK_PER_TRADE_PERCENT = custom_params['position_size_pct']
                 logger.info(f"  → Position Size: {custom_params['position_size_pct']}%")
+        else:
+            logger.info(f"ℹ️  Using Alpha-Ensemble default parameters")
         
-        # Select symbol list based on universe parameter
-        logger.info(f"Universe parameter received: '{symbols}'")
-        if symbols == 'NIFTY200':
-            symbol_list = nifty200_symbols
-            logger.info(f"✅ Using Nifty 200 ({len(symbol_list)} symbols) for {strategy} backtest")
-        elif symbols == 'NIFTY100':
-            symbol_list = nifty100_symbols
-            logger.info(f"✅ Using Nifty 100 ({len(symbol_list)} symbols) for {strategy} backtest")
-        else:  # Default to NIFTY50
-            symbol_list = nifty50_symbols
-            logger.info(f"✅ Using Nifty 50 ({len(symbol_list)} symbols) for {strategy} backtest")
-        
-        logger.info(f"Symbol list sample: {symbol_list[:2] if len(symbol_list) >= 2 else symbol_list}")
-        
-        # Run alpha-ensemble backtest
+        # Run alpha-ensemble backtest with Nifty 50
         return strategy_instance.run_backtest(
-            symbols=symbol_list,
+            symbols=nifty50_symbols,
             start_date=start_date,
             end_date=end_date,
             initial_capital=capital
         )
     
-    # Initialize strategy (for defining-order and other strategies)
+    # Initialize defining-order strategy (default)
     strategy_instance = DefiningOrderStrategy(api_key, jwt_token)
     
-    # Run backtest (nifty50_symbols already defined above)
+    # Run backtest
     return strategy_instance.run_backtest(
         symbols=nifty50_symbols,
         start_date=start_date,

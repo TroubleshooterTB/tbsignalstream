@@ -342,13 +342,8 @@ class DefiningOrderStrategy:
             vwap = (typical_price * group['Volume']).cumsum() / group['Volume'].cumsum()
             return vwap
         
-        # Fix: Use transform with proper handling to get Series
-        vwap_values = []
-        for date, group in data.groupby('Date'):
-            vwap = calc_vwap_group(group)
-            vwap_values.append(vwap)
-        
-        data['VWAP'] = pd.concat(vwap_values)
+        # Apply VWAP calculation per day and combine results
+        data['VWAP'] = data.groupby('Date', group_keys=False).apply(calc_vwap_group).values
         data.drop('Date', axis=1, inplace=True)
         
         return data

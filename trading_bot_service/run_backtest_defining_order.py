@@ -115,12 +115,25 @@ def run_backtest(start_date: str, end_date: str, strategy: str = 'defining',
         logger.info("✅ Using credentials from environment variables")
     
     # Import official NIFTY 200 watchlist (validated with correct tokens)
-    from nifty200_watchlist import NIFTY200_WATCHLIST
-    
-    # Create Nifty 50 and Nifty 100 subsets from official list
-    nifty50_symbols = NIFTY200_WATCHLIST[:50]  # First 50 symbols
-    nifty100_symbols = NIFTY200_WATCHLIST[:100]  # First 100 symbols
-    nifty200_symbols = NIFTY200_WATCHLIST  # Full 200 symbols
+    try:
+        from nifty200_watchlist import NIFTY200_WATCHLIST
+        # Create Nifty 50 and Nifty 100 subsets from official list
+        nifty50_symbols = NIFTY200_WATCHLIST[:50]  # First 50 symbols
+        nifty100_symbols = NIFTY200_WATCHLIST[:100]  # First 100 symbols
+        nifty200_symbols = NIFTY200_WATCHLIST  # All symbols (276)
+        logger.info(f"✅ Loaded symbol lists: N50={len(nifty50_symbols)}, N100={len(nifty100_symbols)}, N200={len(nifty200_symbols)}")
+    except Exception as e:
+        logger.error(f"❌ Failed to load watchlist: {e}")
+        # Fallback to hardcoded Nifty 50
+        nifty50_symbols = [
+            {'symbol': 'RELIANCE-EQ', 'token': '2885'},
+            {'symbol': 'TCS-EQ', 'token': '11536'},
+            {'symbol': 'HDFCBANK-EQ', 'token': '1333'},
+            {'symbol': 'INFY-EQ', 'token': '1594'},
+            {'symbol': 'ICICIBANK-EQ', 'token': '4963'},
+        ]
+        nifty100_symbols = nifty50_symbols
+        nifty200_symbols = nifty50_symbols
     
     # Check if this is alpha-ensemble strategy
     if strategy == 'alpha-ensemble':
@@ -168,15 +181,18 @@ def run_backtest(start_date: str, end_date: str, strategy: str = 'defining',
                 logger.info(f"  → Position Size: {custom_params['position_size_pct']}%")
         
         # Select symbol list based on universe parameter
+        logger.info(f"Universe parameter received: '{symbols}'")
         if symbols == 'NIFTY200':
             symbol_list = nifty200_symbols
-            logger.info(f"Using Nifty 200 ({len(symbol_list)} symbols) for {strategy} backtest")
+            logger.info(f"✅ Using Nifty 200 ({len(symbol_list)} symbols) for {strategy} backtest")
         elif symbols == 'NIFTY100':
             symbol_list = nifty100_symbols
-            logger.info(f"Using Nifty 100 ({len(symbol_list)} symbols) for {strategy} backtest")
+            logger.info(f"✅ Using Nifty 100 ({len(symbol_list)} symbols) for {strategy} backtest")
         else:  # Default to NIFTY50
             symbol_list = nifty50_symbols
-            logger.info(f"Using Nifty 50 ({len(symbol_list)} symbols) for {strategy} backtest")
+            logger.info(f"✅ Using Nifty 50 ({len(symbol_list)} symbols) for {strategy} backtest")
+        
+        logger.info(f"Symbol list sample: {symbol_list[:2] if len(symbol_list) >= 2 else symbol_list}")
         
         # Run alpha-ensemble backtest
         return strategy_instance.run_backtest(

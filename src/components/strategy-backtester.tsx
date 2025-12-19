@@ -62,6 +62,8 @@ export function StrategyBacktester() {
   const [savedResults, setSavedResults] = useState<any[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [saveError, setSaveError] = useState<string>("");
+  const [isSaving, setIsSaving] = useState(false);
 
   // Load saved backtest history
   const loadBacktestHistory = async () => {
@@ -92,7 +94,16 @@ export function StrategyBacktester() {
 
   // Save backtest results to Firestore
   const saveBacktestResults = async (backtestData: any) => {
+    setIsSaving(true);
+    setSaveError("");
     try {
+      console.log('Attempting to save backtest results...', {
+        strategy: selectedStrategy,
+        start_date: format(backtestData.start_date, "yyyy-MM-dd"),
+        end_date: format(backtestData.end_date, "yyyy-MM-dd"),
+        trades: backtestData.trades?.length || 0
+      });
+      
       const docRef = await addDoc(collection(db, 'backtest_results'), {
         strategy: selectedStrategy,
         start_date: format(backtestData.start_date, "yyyy-MM-dd"),
@@ -101,17 +112,22 @@ export function StrategyBacktester() {
         summary: backtestData.summary,
         trades: backtestData.trades,
         timestamp: Timestamp.now(),
-        user: 'local_bot_user' // You can replace with actual user ID
+        user: 'local_bot_user',
+        created_at: new Date().toISOString()
       });
       
-      console.log('Backtest results saved with ID:', docRef.id);
+      console.log('✅ Backtest results saved with ID:', docRef.id);
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
       
       // Reload history to show new result
       await loadBacktestHistory();
     } catch (err) {
-      console.error('Error saving backtest results:', err);
+      const errorMsg = err instanceof Error ? err.message : 'Failed to save results';
+      console.error('❌ Error saving backtest results:', err);
+      setSaveError(errorMsg);
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -537,10 +553,51 @@ export function StrategyBacktester() {
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-semibold">Backtest Results</h3>
-              <Badge variant={summary.win_rate >= 50 ? "default" : "destructive"}>
-                {summary.win_rate.toFixed(2)}% Win Rate
-              </Badge>
+              <div className="flex items-center gap-2">
+                <Badge variant={summary.win_rate >= 50 ? "default" : "destructive"}>
+                  {summary.win_rate.toFixed(2)}% Win Rate
+                </Badge>
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    const backtestStartDate = dateMode === "single" ? singleDate! : startDate!;
+                    const backtestEndDate = dateMode === "single" ? singleDate! : endDate!;
+                    saveBacktestResults({
+                      start_date: backtestStartDate,
+                      end_date: backtestEndDate,
+                      summary: summary,
+                      trades: results
+                    });
+                  }}
+                  disabled={isSaving}
+                  variant="outline"
+                >
+                  {isSaving ? (
+                    <>
+                      <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="h-3 w-3 mr-1" />
+                      Save Results
+                    </>
+                  )}
+                </Button>
+              </div>
             </div>
+            
+            {saveError && (
+              <div className="p-3 bg-red-50 border border-red-200 rounded-md">
+                <p className="text-sm text-red-800">Save Error: {saveError}</p>
+              </div>
+            )}
+            
+            {saveSuccess && (
+              <div className="p-3 bg-green-50 border border-green-200 rounded-md">
+                <p className="text-sm text-green-800">✅ Results saved successfully!</p>
+              </div>
+            )}
 
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="space-y-1">
@@ -721,7 +778,7 @@ export function StrategyBacktester() {
                           </div>
                         </div>
                         <div className="text-xs text-muted-foreground">
-                          Saved: {result.timestamp?.toDate ? result.timestamp.toDate().toLocaleString() : 'Unknown'}
+                          Saved: {result.created_at || result.timestamp?.toDate?.()?.toLocaleString?.() || 'Unknown'}
                         </div>
                       </div>
                     </Card>

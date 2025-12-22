@@ -15,7 +15,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
-import { Calendar as CalendarIcon, TrendingUp, TrendingDown, Loader2, BarChart3, Play, History, Save } from "lucide-react";
+import { Calendar as CalendarIcon, TrendingUp, TrendingDown, Loader2, BarChart3, Play, History, Save, FileDown } from "lucide-react";
 import { useTradingContext } from "@/context/trading-context";
 import { db } from "@/lib/firebase";
 import { collection, addDoc, query, orderBy, limit, getDocs, Timestamp } from "firebase/firestore";
@@ -65,6 +65,7 @@ export function StrategyBacktester() {
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [saveError, setSaveError] = useState<string>("");
   const [isSaving, setIsSaving] = useState(false);
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
 
   // Strategy Parameters
   const [adxThreshold, setAdxThreshold] = useState(25);
@@ -167,6 +168,59 @@ export function StrategyBacktester() {
       setSaveError(errorMsg);
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  // Export backtest results to PDF
+  const exportBacktestPdf = async () => {
+    if (!summary || !results || results.length === 0) {
+      return;
+    }
+
+    try {
+      setIsExportingPdf(true);
+      
+      const backtestStartDate = dateMode === "single" ? singleDate! : startDate!;
+      const backtestEndDate = dateMode === "single" ? singleDate! : endDate!;
+
+      const response = await fetch(`${BACKEND_URL}/backtest/export/pdf`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          trades: results,
+          summary: {
+            ...summary,
+            initial_capital: parseFloat(capital)
+          },
+          strategy: selectedStrategy,
+          start_date: backtestStartDate,
+          end_date: backtestEndDate
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to generate PDF');
+      }
+
+      // Download the PDF
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `backtest_${selectedStrategy}_${backtestStartDate}_${backtestEndDate}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      
+      console.log('✅ PDF exported successfully');
+    } catch (err) {
+      console.error('❌ Error exporting PDF:', err);
+      setSaveError(err instanceof Error ? err.message : 'Failed to export PDF');
+    } finally {
+      setIsExportingPdf(false);
     }
   };
 
@@ -866,6 +920,24 @@ export function StrategyBacktester() {
                 <Badge variant={summary.win_rate >= 50 ? "default" : "destructive"}>
                   {summary.win_rate.toFixed(2)}% Win Rate
                 </Badge>
+                <Button
+                  size="sm"
+                  onClick={exportBacktestPdf}
+                  disabled={isExportingPdf || results.length === 0}
+                  variant="outline"
+                >
+                  {isExportingPdf ? (
+                    <>
+                      <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                      Exporting...
+                    </>
+                  ) : (
+                    <>
+                      <FileDown className="h-3 w-3 mr-1" />
+                      Export PDF
+                    </>
+                  )}
+                </Button>
                 <Button
                   size="sm"
                   onClick={() => {

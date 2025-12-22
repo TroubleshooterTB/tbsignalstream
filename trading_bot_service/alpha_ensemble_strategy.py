@@ -20,62 +20,81 @@ logger = logging.getLogger(__name__)
 class AlphaEnsembleStrategy:
     """Alpha-Ensemble Strategy with Market Regime & Retest Logic"""
     
-    def __init__(self, api_key: str, jwt_token: str):
+    def __init__(self, api_key: str, jwt_token: str, strategy_params: Optional[Dict] = None):
         self.api_key = api_key
         self.jwt_token = jwt_token
         
+        # Load strategy parameters (use provided params or optimized defaults)
+        params = strategy_params or {}
+        
         # ===== LAYER 1: MARKET REGIME FILTERS =====
-        self.NIFTY_ALIGNMENT_THRESHOLD = 0.3  # Nifty must be >0.3% from open
-        self.VIX_MAX_THRESHOLD = 22.0  # Skip all trades if India VIX > 22
+        self.NIFTY_ALIGNMENT_THRESHOLD = params.get('nifty_alignment', 0.0)  # Same direction = 0.0%
+        self.VIX_MAX_THRESHOLD = params.get('vix_max', 22.0)
         
         # ===== LAYER 2: TREND & RETEST LOGIC =====
-        self.EMA_200_PERIOD = 200  # 15-minute chart trend filter
-        self.EMA_20_PERIOD = 20    # 5-minute retest level
-        self.VWAP_RETEST_TOLERANCE = 0.1  # Allow 0.1% distance from VWAP for retest
+        self.EMA_200_PERIOD = 200
+        self.EMA_20_PERIOD = 20
+        self.VWAP_RETEST_TOLERANCE = 0.1
         
-        # ===== LAYER 3: 5-FACTOR EXECUTION FILTERS (AGGRESSIVE 65%+ WR) =====
-        self.ADX_MIN_TRENDING = 25  # STRICT: ADX > 25 for strong trends only
+        # ===== LAYER 3: EXECUTION FILTERS (USER-OPTIMIZED) =====
+        self.ADX_MIN_TRENDING = params.get('adx_threshold', 25)
         self.ADX_PERIOD = 14
-        self.VOLUME_MULTIPLIER = 2.0  # 2.0x avg (balance: strict but allows opportunities)
+        self.VOLUME_MULTIPLIER = params.get('volume_multiplier', 2.5)
         self.RSI_PERIOD = 14
         
-        # RSI Sweet Spots (TIGHTER RANGES for 65%+ WR)
-        self.RSI_LONG_MIN = 52   # LONG: RSI 52-62 (strong momentum, tighter)
-        self.RSI_LONG_MAX = 62
-        self.RSI_SHORT_MIN = 38  # SHORT: RSI 38-48 (tighter)
-        self.RSI_SHORT_MAX = 48
+        # RSI Sweet Spots (USER-OPTIMIZED)
+        rsi_oversold = params.get('rsi_oversold', 35)
+        rsi_overbought = params.get('rsi_overbought', 70)
+        self.RSI_LONG_MIN = rsi_oversold  # LONG: RSI 35-70
+        self.RSI_LONG_MAX = rsi_overbought
+        self.RSI_SHORT_MIN = 100 - rsi_overbought  # SHORT: RSI 30-65 (inverted)
+        self.RSI_SHORT_MAX = 100 - rsi_oversold
         
-        # Distance from EMA (STRICTER)
-        self.MAX_DISTANCE_FROM_50EMA = 1.5  # Reject if >1.5% from 50 EMA (was 2.0%)
+        # Distance from EMA
+        self.MAX_DISTANCE_FROM_50EMA = 1.5
         
         # ATR Window
-        self.ATR_MIN_PERCENT = 0.15  # Slightly higher min (filter out low volatility)
-        self.ATR_MAX_PERCENT = 4.0   # Slightly lower max (avoid extreme volatility)
+        self.ATR_MIN_PERCENT = 0.15
+        self.ATR_MAX_PERCENT = 4.0
         self.ATR_PERIOD = 14
         
-        # ===== POSITION & RISK MANAGEMENT (OPTIMIZED FOR 65%+ WR) =====
-        self.RISK_REWARD_RATIO = 3.0  # 1:3.0 R:R (let winners run!)
-        self.ATR_MULTIPLIER_FOR_SL = 1.8  # SL = 1.8x ATR (wider to avoid noise)
-        self.MAXIMUM_SL_PERCENT = 0.6  # Max SL cap: 0.6% of price (tighter)
-        self.RISK_PER_TRADE_PERCENT = 2.0  # Risk 2% per trade (higher conviction)
-        self.BREAKEVEN_RATIO = 1.0  # Move SL to BE at 1:1 R:R
+        # ===== POSITION & RISK MANAGEMENT (USER-OPTIMIZED) =====
+        self.RISK_REWARD_RATIO = params.get('risk_reward', 2.5)  # 1:2.5 R:R
+        self.ATR_MULTIPLIER_FOR_SL = 1.8
+        self.MAXIMUM_SL_PERCENT = 0.6
+        self.RISK_PER_TRADE_PERCENT = params.get('position_size', 5.0)  # 5% per trade
+        self.BREAKEVEN_RATIO = 1.0
         
         # SuperTrend Exit
         self.SUPERTREND_PERIOD = 10
         self.SUPERTREND_MULTIPLIER = 3
         
-        # ===== TIME FILTERS (Keep from v3.2) =====
-        self.SKIP_10AM_HOUR = True
-        self.SKIP_11AM_HOUR = True
-        self.SKIP_LUNCH_HOUR = True  # 13:00 hour
+        # ===== TIME FILTERS (USER-OPTIMIZED) =====
+        trading_start = params.get('trading_start_hour', 10)  # 10:30 AM
+        trading_end = params.get('trading_end_hour', 14)    # 14:15 PM
+        self.SKIP_10AM_HOUR = (trading_start > 10)  # Skip if trading starts after 10 AM
+        self.SKIP_11AM_HOUR = False  # Allow 11 AM hour (within 10:30-14:15)
+        self.SKIP_LUNCH_HOUR = False  # Allow lunch hour (within 10:30-14:15)
         self.DR_START_TIME = time(9, 30)
         self.DR_END_TIME = time(10, 30)
-        self.SESSION_END_TIME = time(15, 15)
+        self.SESSION_START_TIME = time(trading_start, 30)  # 10:30 AM
+        self.SESSION_END_TIME = time(trading_end, 15)  # 14:15 PM
         
-        # ===== SYMBOL BLACKLIST (Keep from v3.2) =====
+        # ===== SYMBOL BLACKLIST =====
         self.BLACKLISTED_SYMBOLS = [
             'SBIN-EQ', 'POWERGRID-EQ', 'SHRIRAMFIN-EQ', 'JSWSTEEL-EQ'
         ]
+        
+        # Log loaded parameters
+        logger.info(f"✅ Alpha-Ensemble Strategy Initialized with:")
+        logger.info(f"   ADX Threshold: {self.ADX_MIN_TRENDING}")
+        logger.info(f"   RSI Range LONG: {self.RSI_LONG_MIN}-{self.RSI_LONG_MAX}")
+        logger.info(f"   RSI Range SHORT: {self.RSI_SHORT_MIN}-{self.RSI_SHORT_MAX}")
+        logger.info(f"   Volume: {self.VOLUME_MULTIPLIER}x")
+        logger.info(f"   R:R: 1:{self.RISK_REWARD_RATIO}")
+        logger.info(f"   Position Size: {self.RISK_PER_TRADE_PERCENT}%")
+        logger.info(f"   Trading Hours: {self.SESSION_START_TIME.strftime('%H:%M')}-{self.SESSION_END_TIME.strftime('%H:%M')}")
+        logger.info(f"   Nifty Alignment: Same Direction ({self.NIFTY_ALIGNMENT_THRESHOLD}%)")
     
     def fetch_historical_data(self, symbol: str, token: str, interval: str, 
                             from_date: str, to_date: str) -> pd.DataFrame:

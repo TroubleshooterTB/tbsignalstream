@@ -981,6 +981,18 @@ class RealtimeBotEngine:
             from ironclad_strategy import IroncladStrategy
             self._ironclad = IroncladStrategy(db_client=None, dr_window_minutes=60)
         
+        # Initialize Alpha-Ensemble if needed
+        if self.strategy == 'alpha-ensemble':
+            from alpha_ensemble_strategy import AlphaEnsembleStrategy
+            # Load strategy parameters from bot_config
+            strategy_params = bot_config.get('strategy_params', {})
+            self._alpha_ensemble = AlphaEnsembleStrategy(
+                api_key=self.api_key,
+                jwt_token=self.jwt_token,
+                strategy_params=strategy_params
+            )
+            logger.info(f"✅ Alpha-Ensemble strategy initialized with custom parameters")
+        
         logger.info("✅ Trading managers initialized")
     
     def _is_market_open(self):

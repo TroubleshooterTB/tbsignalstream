@@ -536,11 +536,6 @@ class AlphaEnsembleStrategy:
                     row = intraday_data.iloc[idx]
                     prev_row = intraday_data.iloc[idx-1]
                     
-                    # Skip trades outside configured trading hours
-                    current_time = timestamp.time()
-                    if current_time < self.SESSION_START_TIME or current_time > self.SESSION_END_TIME:
-                        continue  # Outside trading session
-                    
                     # Skip hour blocks
                     current_hour = timestamp.hour
                     if (self.SKIP_10AM_HOUR and current_hour == 10) or \
@@ -548,8 +543,13 @@ class AlphaEnsembleStrategy:
                        (self.SKIP_LUNCH_HOUR and current_hour == 13):
                         continue
                     
-                    # Check if breakout occurred
+                    # Check if breakout occurred (only during configured trading hours)
                     if not breakout_occurred:
+                        # Skip new entries outside configured trading hours
+                        current_time = timestamp.time()
+                        if current_time < self.SESSION_START_TIME or current_time > self.SESSION_END_TIME:
+                            continue  # Outside trading session for new entries
+                        
                         if row['Close'] > dr['high'] and trend_bias == 'BULLISH':
                             breakout_occurred = True
                             breakout_type = 'LONG'
@@ -563,6 +563,11 @@ class AlphaEnsembleStrategy:
                     
                     # If breakout occurred, look for retest entry
                     if breakout_occurred and breakout_type:
+                        # Skip new entries outside configured trading hours
+                        current_time = timestamp.time()
+                        if current_time < self.SESSION_START_TIME or current_time > self.SESSION_END_TIME:
+                            continue  # Outside trading session for new entries
+                        
                         # Check retest
                         retest_passed, retest_msg = self.check_retest_entry(
                             row, prev_row, dr['high'], dr['low'], breakout_type, breakout_occurred

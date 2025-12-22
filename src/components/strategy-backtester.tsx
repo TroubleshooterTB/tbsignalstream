@@ -20,6 +20,9 @@ import { useTradingContext } from "@/context/trading-context";
 import { db } from "@/lib/firebase";
 import { collection, addDoc, query, orderBy, limit, getDocs, Timestamp } from "firebase/firestore";
 
+// Backend API URL
+const BACKEND_URL = 'https://trading-bot-service-vmxfbt7qiq-el.a.run.app';
+
 type BacktestResult = {
   symbol: string;
   entry_time: string;

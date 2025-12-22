@@ -263,34 +263,64 @@ class BacktestPDFExporter:
             return story
         
         # Prepare trade data for table
-        trade_data = [['#', 'Symbol', 'Entry Time', 'Exit Time', 'Direction', 
-                      'Entry ₹', 'Exit ₹', 'P&L ₹', 'Exit Reason']]
+        trade_data = [['#', 'Symbol', 'Entry Time', 'Exit Time', 'Dir', 
+                      'Entry ₹', 'Exit ₹', 'P&L ₹', 'Exit']]
         
         for idx, trade in self.trades_df.iterrows():
-            # Format times (remove seconds if present)
-            entry_time = str(trade['entry_time']).split('.')[0]
-            exit_time = str(trade['exit_time']).split('.')[0]
+            # Format times - extract just date and time (remove timezone/seconds)
+            entry_time_str = str(trade['entry_time'])
+            exit_time_str = str(trade['exit_time'])
+            
+            # Parse and format as "MM-DD HH:MM"
+            try:
+                if 'T' in entry_time_str or ' ' in entry_time_str:
+                    # ISO format or space-separated
+                    entry_parts = entry_time_str.replace('T', ' ').split(' ')
+                    entry_date = entry_parts[0].split('-')[-2:]  # MM-DD
+                    entry_time = entry_parts[1].split(':')[:2]    # HH:MM
+                    entry_time = f"{'-'.join(entry_date)} {':'.join(entry_time)}"
+                else:
+                    entry_time = entry_time_str[:16]  # Fallback
+                    
+                if 'T' in exit_time_str or ' ' in exit_time_str:
+                    exit_parts = exit_time_str.replace('T', ' ').split(' ')
+                    exit_date = exit_parts[0].split('-')[-2:]
+                    exit_time = exit_parts[1].split(':')[:2]
+                    exit_time = f"{'-'.join(exit_date)} {':'.join(exit_time)}"
+                else:
+                    exit_time = exit_time_str[:16]  # Fallback
+            except:
+                entry_time = entry_time_str[:16]
+                exit_time = exit_time_str[:16]
             
             # Format prices
             entry_price = f"{trade['entry_price']:.2f}"
             exit_price = f"{trade['exit_price']:.2f}"
             pnl = f"{trade['pnl']:,.2f}"
             
+            # Shorten symbol name if needed
+            symbol = trade['symbol'].replace('-EQ', '')
+            
+            # Shorten exit reason
+            exit_reason = trade.get('exit_reason', 'N/A')
+            if len(exit_reason) > 8:
+                exit_reason = exit_reason[:8]
+            
             trade_data.append([
                 str(idx + 1),
-                trade['symbol'],
+                symbol,
                 entry_time,
                 exit_time,
-                trade.get('direction', 'LONG'),
+                trade.get('direction', 'LONG')[:4],  # SHORT/LONG -> SHOR/LONG
                 entry_price,
                 exit_price,
                 pnl,
-                trade.get('exit_reason', 'N/A')
+                exit_reason
             ])
         
-        # Create table with appropriate column widths
-        col_widths = [0.4*inch, 0.8*inch, 1.3*inch, 1.3*inch, 0.6*inch, 
-                     0.7*inch, 0.7*inch, 0.8*inch, 1*inch]
+        # Create table with optimized column widths for better readability
+        col_widths = [0.3*inch, 0.85*inch, 1.0*inch, 1.0*inch, 0.45*inch, 
+                     0.65*inch, 0.65*inch, 0.8*inch, 0.8*inch]
         
         # Split into multiple tables if too many trades (20 per page)
         rows_per_page = 20
@@ -303,17 +333,21 @@ class BacktestPDFExporter:
             
             trade_table = Table(chunk, colWidths=col_widths)
             
-            # Style table
+            # Style table with proper text wrapping
             table_style = [
                 ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1a73e8')),
                 ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
                 ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
                 ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('FONTSIZE', (0, 0), (-1, 0), 9),
-                ('FONTSIZE', (0, 1), (-1, -1), 8),
-                ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
+                ('FONTSIZE', (0, 0), (-1, 0), 8),
+                ('FONTSIZE', (0, 1), (-1, -1), 7),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 6),
+                ('TOPPADDING', (0, 1), (-1, -1), 4),
+                ('BOTTOMPADDING', (0, 1), (-1, -1), 4),
                 ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
                 ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.lightgrey]),
+                ('WORDWRAP', (0, 0), (-1, -1), True),
             ]
             
             # Color-code P&L

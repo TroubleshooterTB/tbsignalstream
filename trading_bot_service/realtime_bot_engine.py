@@ -1159,8 +1159,28 @@ class RealtimeBotEngine:
         logger.info(f"🔢 [DEBUG] Candle data available for {len(candle_data_copy)} symbols")
         logger.info(f"💰 [DEBUG] Latest prices available for {len(latest_prices_copy)} symbols")
         
+        # NEW: Log scan cycle start to activity feed
+        if self._activity_logger:
+            try:
+                self._activity_logger.log_scan_cycle_start(
+                    total_symbols=len(self.symbols),
+                    symbols_with_data=len(candle_data_copy)
+                )
+            except Exception as e:
+                logger.debug(f"Activity logger (scan start) error: {e}")
+        
         for symbol in self.symbols:
             try:
+                # NEW: Log symbol scanning to activity feed
+                if self._activity_logger:
+                    try:
+                        self._activity_logger.log_symbol_scanning(
+                            symbol=symbol,
+                            current_price=latest_prices_copy.get(symbol, 0)
+                        )
+                    except Exception as e:
+                        logger.debug(f"Activity logger (scanning) error: {e}")
+                
                 # Check if we have enough candle data (need 50 for full indicator accuracy)
                 # 50 candles ensures: RSI(14), MACD(26), EMA(20), BB(20), ATR(14), ADX(28)
                 # All patterns (Double Top/Bottom, Flags, Triangles) work optimally
@@ -1168,10 +1188,29 @@ class RealtimeBotEngine:
                 candle_count = len(candle_data_copy.get(symbol, []))
                 if symbol not in candle_data_copy or candle_count < 50:
                     logger.info(f"⏭️  [DEBUG] {symbol}: Skipping - insufficient candle data ({candle_count} candles, need 50+)")
+                    
+                    # NEW: Log skip reason
+                    if self._activity_logger:
+                        try:
+                            self._activity_logger.log_symbol_skipped(
+                                symbol=symbol,
+                                reason=f"Insufficient data ({candle_count}/50 candles)"
+                            )
+                        except Exception as e:
+                            logger.debug(f"Activity logger (skip) error: {e}")
                     continue
                 
                 # Skip if already have position
                 if self._position_manager.has_position(symbol):
+                    # NEW: Log skip reason
+                    if self._activity_logger:
+                        try:
+                            self._activity_logger.log_symbol_skipped(
+                                symbol=symbol,
+                                reason="Already have position"
+                            )
+                        except Exception as e:
+                            logger.debug(f"Activity logger (skip) error: {e}")
                     continue
                 
                 df = candle_data_copy[symbol].copy()
@@ -1180,6 +1219,19 @@ class RealtimeBotEngine:
                 pattern_details = self._pattern_detector.scan(df)
                 if not pattern_details:
                     logger.info(f"[DEBUG] {symbol}: No pattern detected this cycle.")
+                    
+                    # NEW: Log no pattern detected
+                    if self._activity_logger:
+                        try:
+                            self._activity_logger.log_no_pattern(
+                                symbol=symbol,
+                                indicators={
+                                    'rsi': float(df['rsi'].iloc[-1]) if 'rsi' in df.columns else 0,
+                                    'adx': float(df['adx'].iloc[-1]) if 'adx' in df.columns else 0
+                                }
+                            )
+                        except Exception as e:
+                            logger.debug(f"Activity logger (no pattern) error: {e}")
                     continue
                 
                 # Check if pattern is tradeable (confirmed breakout) or just forming (watchlist)

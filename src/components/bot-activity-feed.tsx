@@ -21,6 +21,10 @@ import { db } from "@/lib/firebase";
 import { collection, query, where, orderBy, limit, onSnapshot, Timestamp } from "firebase/firestore";
 
 type ActivityType = 
+  | "scan_cycle_start"
+  | "symbol_scanning"
+  | "symbol_skipped"
+  | "no_pattern"
   | "pattern_detected" 
   | "screening_started"
   | "screening_passed" 
@@ -50,6 +54,30 @@ const activityConfig: Record<ActivityType, {
   label: string;
   bgColor: string;
 }> = {
+  scan_cycle_start: {
+    icon: <BarChart3 className="h-4 w-4" />,
+    color: "text-slate-600",
+    bgColor: "bg-slate-50",
+    label: "Scan Cycle Started"
+  },
+  symbol_scanning: {
+    icon: <Search className="h-4 w-4" />,
+    color: "text-gray-500",
+    bgColor: "bg-gray-50",
+    label: "Scanning"
+  },
+  symbol_skipped: {
+    icon: <Clock className="h-4 w-4" />,
+    color: "text-gray-400",
+    bgColor: "bg-gray-50",
+    label: "Skipped"
+  },
+  no_pattern: {
+    icon: <TrendingUp className="h-4 w-4" />,
+    color: "text-gray-400",
+    bgColor: "bg-gray-50",
+    label: "No Pattern"
+  },
   pattern_detected: {
     icon: <Search className="h-4 w-4" />,
     color: "text-blue-600",

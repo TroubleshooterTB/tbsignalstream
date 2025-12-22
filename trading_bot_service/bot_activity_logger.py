@@ -324,3 +324,103 @@ class BotActivityLogger:
             
         except Exception as e:
             logger.error(f"Failed to cleanup old activities: {e}")
+    
+    def log_scan_cycle_start(self, total_symbols: int, symbols_with_data: int):
+        """
+        Log when a new scan cycle begins.
+        
+        Args:
+            total_symbols: Total symbols to scan
+            symbols_with_data: Number of symbols with sufficient data
+        """
+        try:
+            activity = {
+                'user_id': self.user_id,
+                'timestamp': firestore.SERVER_TIMESTAMP,
+                'type': 'scan_cycle_start',
+                'symbol': 'SYSTEM',
+                'reason': f'Scanning {symbols_with_data}/{total_symbols} symbols',
+                'details': {
+                    'total_symbols': total_symbols,
+                    'symbols_with_data': symbols_with_data
+                }
+            }
+            
+            self.collection.add(activity)
+            logger.debug(f"✅ Logged scan cycle start: {total_symbols} symbols")
+            
+        except Exception as e:
+            logger.error(f"Failed to log scan cycle start: {e}")
+    
+    def log_symbol_scanning(self, symbol: str, current_price: float):
+        """
+        Log when scanning a specific symbol.
+        
+        Args:
+            symbol: Stock symbol being scanned
+            current_price: Current market price
+        """
+        try:
+            activity = {
+                'user_id': self.user_id,
+                'timestamp': firestore.SERVER_TIMESTAMP,
+                'type': 'symbol_scanning',
+                'symbol': symbol,
+                'reason': f'Analyzing {symbol} at ₹{current_price:.2f}',
+                'details': {
+                    'current_price': current_price
+                }
+            }
+            
+            self.collection.add(activity)
+            logger.debug(f"✅ Logged symbol scan: {symbol}")
+            
+        except Exception as e:
+            logger.error(f"Failed to log symbol scan: {e}")
+    
+    def log_symbol_skipped(self, symbol: str, reason: str):
+        """
+        Log when a symbol is skipped during scanning.
+        
+        Args:
+            symbol: Stock symbol that was skipped
+            reason: Why it was skipped
+        """
+        try:
+            activity = {
+                'user_id': self.user_id,
+                'timestamp': firestore.SERVER_TIMESTAMP,
+                'type': 'symbol_skipped',
+                'symbol': symbol,
+                'reason': reason
+            }
+            
+            self.collection.add(activity)
+            logger.debug(f"⏭️  Logged symbol skip: {symbol} - {reason}")
+            
+        except Exception as e:
+            logger.error(f"Failed to log symbol skip: {e}")
+    
+    def log_no_pattern(self, symbol: str, indicators: dict):
+        """
+        Log when no pattern is detected for a symbol.
+        
+        Args:
+            symbol: Stock symbol
+            indicators: Current indicator values (RSI, ADX, etc.)
+        """
+        try:
+            activity = {
+                'user_id': self.user_id,
+                'timestamp': firestore.SERVER_TIMESTAMP,
+                'type': 'no_pattern',
+                'symbol': symbol,
+                'reason': f'No pattern detected (RSI: {indicators.get("rsi", 0):.1f}, ADX: {indicators.get("adx", 0):.1f})',
+                'details': indicators
+            }
+            
+            self.collection.add(activity)
+            logger.debug(f"📊 Logged no pattern: {symbol}")
+            
+        except Exception as e:
+            logger.error(f"Failed to log no pattern: {e}")

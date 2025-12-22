@@ -526,9 +526,10 @@ class AlphaEnsembleStrategy:
                 if len(intraday_data) == 0:
                     continue
                 
-                # Track breakout state
+                # Track breakout state and trade taken flag
                 breakout_occurred = False
                 breakout_type = None
+                trade_taken_today = False  # CRITICAL: Prevent multiple trades per symbol per day
                 
                 # Scan for retest entries
                 for idx in range(1, len(intraday_data)):
@@ -544,7 +545,7 @@ class AlphaEnsembleStrategy:
                         continue
                     
                     # Check if breakout occurred (only during configured trading hours)
-                    if not breakout_occurred:
+                    if not breakout_occurred and not trade_taken_today:  # Skip if trade already taken
                         # Skip new entries outside configured trading hours
                         current_time = timestamp.time()
                         if current_time < self.SESSION_START_TIME or current_time > self.SESSION_END_TIME:
@@ -562,7 +563,7 @@ class AlphaEnsembleStrategy:
                             continue
                     
                     # If breakout occurred, look for retest entry
-                    if breakout_occurred and breakout_type:
+                    if breakout_occurred and breakout_type and not trade_taken_today:  # Skip if trade already taken
                         # Skip new entries outside configured trading hours
                         current_time = timestamp.time()
                         if current_time < self.SESSION_START_TIME or current_time > self.SESSION_END_TIME:
@@ -629,6 +630,9 @@ class AlphaEnsembleStrategy:
                             continue
                         
                         logger.info(f"    🚀 ENTRY: {symbol} {breakout_type} at ₹{entry_price:.2f}, SL: ₹{stop_loss:.2f}, TP: ₹{take_profit:.2f}, BE: ₹{breakeven_price:.2f}, Qty: {quantity}")
+                        
+                        # Mark that trade was taken today (prevent multiple trades same symbol same day)
+                        trade_taken_today = True
                         
                         # Simulate trade execution
                         trailing_sl = stop_loss
@@ -753,7 +757,8 @@ class AlphaEnsembleStrategy:
                                 logger.info(f"    🔄 ST Flip: {symbol} {breakout_type} at ₹{exit_price:.2f}, P&L: ₹{pnl:,.2f}")
                                 break
                         
-                        # Reset for next potential trade
+                        # Note: trade_taken_today prevents multiple trades same day
+                        # Reset breakout flags for next symbol (but trade_taken_today stays True for this date)
                         breakout_occurred = False
                         breakout_type = None
         

@@ -872,6 +872,55 @@ def run_backtest():
         return jsonify({'error': error_msg}), 500
 
 
+@app.route('/backtest/export/pdf', methods=['POST'])
+def export_backtest_pdf():
+    """
+    Export backtest results to PDF with detailed trade log
+    """
+    try:
+        data = request.get_json()
+        
+        # Get backtest results from request
+        trades = data.get('trades', [])
+        summary = data.get('summary', {})
+        strategy = data.get('strategy', 'alpha-ensemble')
+        start_date = data.get('start_date', '')
+        end_date = data.get('end_date', '')
+        
+        if not trades:
+            return jsonify({'error': 'No trades data provided'}), 400
+        
+        # Import PDF exporter
+        from backtest_pdf_export import export_backtest_to_pdf
+        
+        # Prepare results in expected format
+        backtest_results = {
+            'strategy_name': f"{strategy.replace('-', ' ').title()} Strategy",
+            'initial_capital': summary.get('initial_capital', 100000),
+            'capital': summary.get('initial_capital', 100000) + summary.get('total_pnl', 0),
+            'win_rate': summary.get('win_rate', 0),
+            'profit_factor': summary.get('profit_factor', 0),
+            'trades': trades
+        }
+        
+        # Generate PDF
+        filename = f"backtest_{strategy}_{start_date}_{end_date}.pdf"
+        pdf_path = export_backtest_to_pdf(backtest_results, filename)
+        
+        # Send file as response
+        from flask import send_file
+        return send_file(
+            pdf_path,
+            mimetype='application/pdf',
+            as_attachment=True,
+            download_name=filename
+        )
+    
+    except Exception as e:
+        logger.error(f"PDF export error: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
     app.run(host='0.0.0.0', port=port, threaded=True)

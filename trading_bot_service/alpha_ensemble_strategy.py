@@ -536,6 +536,11 @@ class AlphaEnsembleStrategy:
                     row = intraday_data.iloc[idx]
                     prev_row = intraday_data.iloc[idx-1]
                     
+                    # Skip trades outside configured trading hours
+                    current_time = timestamp.time()
+                    if current_time < self.SESSION_START_TIME or current_time > self.SESSION_END_TIME:
+                        continue  # Outside trading session
+                    
                     # Skip hour blocks
                     current_hour = timestamp.hour
                     if (self.SKIP_10AM_HOUR and current_hour == 10) or \

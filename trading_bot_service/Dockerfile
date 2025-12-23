@@ -9,19 +9,31 @@ RUN apt-get update && apt-get install -y \
     gcc \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements first for better caching
+# Copy requirements and install Python packages
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Invalidate cache for code changes
-ARG CACHE_BUST=1
-
 # Copy application code
-COPY . .
+COPY main.py ./
+COPY realtime_bot_engine.py ./
+COPY bot_activity_logger.py ./
+COPY historical_data_manager.py ./
+COPY backtest_pdf_export.py ./
+COPY alpha_ensemble_strategy.py ./
+COPY advanced_screening_manager.py ./
+COPY entrypoint.sh ./
+COPY ws_manager/ ./ws_manager/
+COPY trading/ ./trading/
+
+# Make entrypoint executable
+RUN chmod +x /app/entrypoint.sh
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
 ENV PORT=8080
 
-# Run the application
-CMD exec gunicorn --bind :$PORT --workers 1 --threads 8 --timeout 0 main:app
+# Expose port
+EXPOSE 8080
+
+# Test if files exist, then run gunicorn
+CMD ["sh", "-c", "ls -la /app/main.py && python3 -c 'import main; print(\"Import successful\")' && gunicorn --bind 0.0.0.0:8080 --workers 1 --threads 4 --timeout 0 --chdir /app main:app"]

@@ -180,16 +180,39 @@ def health_check():
 def check_credentials():
     """Diagnostic endpoint to verify Angel One credentials are loaded"""
     try:
+        # Check for credentials with multiple naming variants
+        api_key = (
+            os.environ.get('ANGELONE_TRADING_API_KEY', '') or
+            os.environ.get('ANGELONE_API_KEY', '') or
+            os.environ.get('ANGEL_ONE_API_KEY', '')
+        )
+        api_secret = (
+            os.environ.get('ANGELONE_TRADING_SECRET', '') or
+            os.environ.get('ANGELONE_API_SECRET', '') or
+            os.environ.get('ANGEL_ONE_API_SECRET', '')
+        )
+        client_code = (
+            os.environ.get('ANGELONE_CLIENT_CODE', '') or
+            os.environ.get('ANGEL_ONE_CLIENT_CODE', '')
+        )
+        password = (
+            os.environ.get('ANGELONE_PASSWORD', '') or
+            os.environ.get('ANGEL_ONE_PASSWORD', '')
+        )
+        totp_secret = (
+            os.environ.get('ANGELONE_TOTP_SECRET', '') or
+            os.environ.get('ANGEL_ONE_TOTP_SECRET', '')
+        )
+        
         credentials_status = {
-            'ANGEL_ONE_API_KEY': 'SET' if os.environ.get('ANGEL_ONE_API_KEY') else 'MISSING',
-            'ANGEL_ONE_API_SECRET': 'SET' if os.environ.get('ANGEL_ONE_API_SECRET') else 'MISSING',
-            'ANGEL_ONE_CLIENT_CODE': 'SET' if os.environ.get('ANGEL_ONE_CLIENT_CODE') else 'MISSING',
-            'ANGEL_ONE_PASSWORD': 'SET' if os.environ.get('ANGEL_ONE_PASSWORD') else 'MISSING',
-            'ANGEL_ONE_TOTP_SECRET': 'SET' if os.environ.get('ANGEL_ONE_TOTP_SECRET') else 'MISSING',
+            'ANGELONE_TRADING_API_KEY': 'SET' if api_key else 'MISSING',
+            'ANGELONE_TRADING_SECRET': 'SET' if api_secret else 'MISSING',
+            'ANGELONE_CLIENT_CODE': 'SET' if client_code else 'MISSING',
+            'ANGELONE_PASSWORD': 'SET' if password else 'MISSING',
+            'ANGELONE_TOTP_SECRET': 'SET' if totp_secret else 'MISSING',
         }
         
         # Show first 4 chars of API key for verification (safely)
-        api_key = os.environ.get('ANGEL_ONE_API_KEY', '')
         api_key_preview = f"{api_key[:4]}..." if len(api_key) >= 4 else "EMPTY"
         
         all_set = all(status == 'SET' for status in credentials_status.values())

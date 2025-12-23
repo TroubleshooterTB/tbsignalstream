@@ -142,9 +142,9 @@ export const orderApi = {
 // Trading Bot Functions
 export const tradingBotApi = {
   start: async (config: {
-    symbols: string[];
+    symbols: string; // Changed from string[] to string - it's a universe name like "NIFTY100"
     mode?: 'paper' | 'live';
-    strategy?: 'pattern' | 'ironclad' | 'both' | 'defining';
+    strategy?: 'pattern' | 'ironclad' | 'both' | 'defining' | 'alpha-ensemble';
     maxPositions?: number;
     positionSize?: number;
   }) => {

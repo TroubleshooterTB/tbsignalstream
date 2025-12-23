@@ -143,19 +143,21 @@ export function TradingProvider({ children }: { children: React.ReactNode }) {
     
     setIsBotLoading(true);
     try {
-      const symbols = botConfig.symbols.split(',').map(s => s.trim()).filter(Boolean);
+      // Don't split symbols - it's a universe name (NIFTY50/NIFTY100/NIFTY200)
+      // Backend expects the universe string, not an array
+      const symbols = botConfig.symbols; // Pass as-is: "NIFTY100"
       
-      if (symbols.length === 0) {
+      if (!symbols) {
         toast({
           title: 'Validation Error',
-          description: 'Please enter at least one symbol',
+          description: 'Please select a symbol universe',
           variant: 'destructive',
         });
         return;
       }
 
       const result = await tradingBotApi.start({
-        symbols,
+        symbols, // Send "NIFTY100" not ["NIFTY100"]
         mode: botConfig.mode,
         strategy: botConfig.strategy,
         maxPositions: parseInt(botConfig.maxPositions),

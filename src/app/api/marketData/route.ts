@@ -23,33 +23,52 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Forward request to Cloud Run backend
+    // Forward request to Cloud Run backend with timeout
     const backendUrl = process.env.NEXT_PUBLIC_TRADING_BOT_URL || 
                        'https://trading-bot-service-vmxfbt7qiq-el.a.run.app';
     
-    const response = await fetch(`${backendUrl}/market_data`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': authHeader,
-      },
-      body: JSON.stringify({ mode, exchangeTokens }),
-    });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+    
+    try {
+      const response = await fetch(`${backendUrl}/market_data`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': authHeader,
+        },
+        body: JSON.stringify({ mode, exchangeTokens }),
+        signal: controller.signal,
+      });
+      
+      clearTimeout(timeoutId);
 
-    if (!response.ok) {
-      // Return empty data instead of error when bot not running
+      if (!response.ok) {
+        // Return empty data instead of error when bot not running
+        return NextResponse.json(
+          { 
+            status: false,
+            message: 'Market data unavailable',
+            data: { fetched: [] }
+          },
+          { status: 200 }
+        );
+      }
+
+      const data = await response.json();
+      return NextResponse.json(data);
+    } catch (fetchError) {
+      clearTimeout(timeoutId);
+      // Handle timeout or network errors
       return NextResponse.json(
         { 
           status: false,
-          message: 'Market data unavailable',
+          message: 'Backend timeout or unavailable',
           data: { fetched: [] }
         },
         { status: 200 }
       );
     }
-
-    const data = await response.json();
-    return NextResponse.json(data);
 
   } catch (error) {
     // Silently handle errors when bot is not running or market is closed

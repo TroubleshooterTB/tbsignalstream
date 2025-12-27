@@ -54,11 +54,21 @@ export async function fetchMarketData(request: MarketDataRequest): Promise<Marke
   });
 
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || 'Failed to fetch market data');
+    // Try to parse error, but handle HTML responses gracefully
+    try {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to fetch market data');
+    } catch {
+      throw new Error(`Server error: ${response.status}`);
+    }
   }
 
-  return response.json();
+  // Safely parse JSON response
+  try {
+    return await response.json();
+  } catch (error) {
+    throw new Error('Invalid response from server');
+  }
 }
 
 /**

@@ -127,13 +127,10 @@ export function LiveAlertsDashboard() {
         setLivePrices(prices);
         setIsLoadingPrices(false);
       } catch (error) {
-        console.error('[Dashboard] Failed to fetch live prices:', error);
+        // Silently handle errors - market might be closed or backend unavailable
+        console.warn('[Dashboard] Market data unavailable (normal when market closed)');
         setIsLoadingPrices(false);
-        toast({
-          title: "Market Data Error",
-          description: "Using simulated data. Please connect your Angel One account.",
-          variant: "destructive",
-        });
+        // Don't show toast - this is expected when market is closed
       }
     };
 

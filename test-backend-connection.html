@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Backend Connection Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        .status {
+            padding: 20px;
+            margin: 10px 0;
+            border-radius: 8px;
+        }
+        .success {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .error {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        pre {
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔧 Backend Connection Test</h1>
+    
+    <button onclick="testBackend()">Test Backend Connection</button>
+    
+    <div id="results"></div>
+
+    <script>
+        const BACKEND_URL = 'https://trading-bot-service-818546654122.asia-south1.run.app';
+
+        async function testBackend() {
+            const resultsDiv = document.getElementById('results');
+            resultsDiv.innerHTML = '<p>Testing...</p>';
+
+            try {
+                // Test 1: Health check
+                console.log('Testing /health endpoint...');
+                const healthResponse = await fetch(`${BACKEND_URL}/health`);
+                const healthData = await healthResponse.json();
+                
+                // Test 2: System status
+                console.log('Testing /system-status endpoint...');
+                const statusResponse = await fetch(`${BACKEND_URL}/system-status`);
+                const statusData = await statusResponse.json();
+
+                // Success
+                resultsDiv.innerHTML = `
+                    <div class="status success">
+                        <h2>✅ Backend Connected Successfully!</h2>
+                        <p><strong>Backend URL:</strong> ${BACKEND_URL}</p>
+                    </div>
+
+                    <h3>/health Response:</h3>
+                    <pre>${JSON.stringify(healthData, null, 2)}</pre>
+
+                    <h3>/system-status Response:</h3>
+                    <pre>${JSON.stringify(statusData, null, 2)}</pre>
+
+                    <div class="status success">
+                        <h3>Summary:</h3>
+                        <ul>
+                            <li>Backend Status: ${healthData.status}</li>
+                            <li>Active Bots: ${healthData.active_bots}</li>
+                            <li>Firestore Connected: ${statusData.firestore_connected ? 'Yes ✅' : 'No ❌'}</li>
+                            <li>Errors: ${statusData.errors.length}</li>
+                            <li>Warnings: ${statusData.warnings.length}</li>
+                        </ul>
+                    </div>
+                `;
+            } catch (error) {
+                resultsDiv.innerHTML = `
+                    <div class="status error">
+                        <h2>❌ Backend Connection Failed</h2>
+                        <p><strong>Error:</strong> ${error.message}</p>
+                        <p><strong>Backend URL:</strong> ${BACKEND_URL}</p>
+                    </div>
+
+                    <h3>Troubleshooting:</h3>
+                    <ul>
+                        <li>Check if backend service is running</li>
+                        <li>Verify the URL is correct</li>
+                        <li>Check CORS configuration</li>
+                        <li>Check browser console for detailed errors</li>
+                    </ul>
+
+                    <h3>Error Details:</h3>
+                    <pre>${error.stack}</pre>
+                `;
+            }
+        }
+
+        // Auto-test on page load
+        window.onload = () => {
+            testBackend();
+        };
+    </script>
+</body>
+</html>

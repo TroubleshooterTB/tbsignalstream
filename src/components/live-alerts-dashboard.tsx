@@ -31,6 +31,7 @@ import { MarketHeatmap } from "@/components/market-heatmap";
 import { BotPerformanceStats } from "@/components/bot-performance-stats";
 import { PatternBadge } from "@/components/pattern-education";
 import { BotActivityFeed } from "@/components/bot-activity-feed";
+import { ReplayResultsPanel } from "@/components/replay-results-panel";
 import { StrategyBacktester } from "@/components/strategy-backtester";
 import { db } from "@/lib/firebase";
 import { onSnapshot, collection, query, where, orderBy, limit } from "firebase/firestore";
@@ -386,7 +387,10 @@ export function LiveAlertsDashboard() {
         <BotPerformanceStats />
       </div>
       
-      {/* Bot Activity Feed - NEW: Real-time analysis monitoring */}
+      {/* Replay Results Panel - Shows when replay mode is active */}
+      <ReplayResultsPanel />
+      
+      {/* Bot Activity Feed - Real-time analysis monitoring */}
       <BotActivityFeed />
       
       {/* Unified Dashboard - All Sections Always Visible */}

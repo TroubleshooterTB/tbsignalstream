@@ -41,13 +41,15 @@ class RealtimeBotEngine:
     """
     
     def __init__(self, user_id: str, credentials: dict, symbols: list, 
-                 trading_mode: str = 'paper', strategy: str = 'pattern', db_client=None):
+                 trading_mode: str = 'paper', strategy: str = 'pattern', db_client=None, replay_date: str = None):
         self.user_id = user_id
         self.credentials = credentials
         self.symbols = symbols
         self.trading_mode = trading_mode.lower()
         self.strategy = strategy.lower()
         self.db = db_client  # Firestore client for Activity Logger and ML Logger
+        self.replay_date = replay_date  # Phase 3: Replay Mode
+        self.is_replay_mode = replay_date is not None
         
         # Extract credentials
         self.jwt_token = credentials.get('jwt_token', '')
@@ -1784,7 +1786,9 @@ class RealtimeBotEngine:
                 'rationale': reason,
                 'timestamp': firestore.SERVER_TIMESTAMP,
                 'mode': self.trading_mode,
-                'status': 'open'
+                'status': 'open',
+                'replay_mode': self.is_replay_mode,  # Phase 3: Mark replay signals
+                'replay_date': self.replay_date if self.is_replay_mode else None
             }
             if ml_signal_id:
                 signal_data['ml_signal_id'] = ml_signal_id
@@ -2026,7 +2030,9 @@ class RealtimeBotEngine:
                 'timestamp': firestore.SERVER_TIMESTAMP,
                 'mode': self.trading_mode,
                 'status': 'closed',
-                'holding_duration_minutes': int(holding_duration)
+                'holding_duration_minutes': int(holding_duration),
+                'replay_mode': self.is_replay_mode,  # Phase 3: Mark replay signals
+                'replay_date': self.replay_date if self.is_replay_mode else None
             }
             
             db.collection('trading_signals').add(exit_signal_data)

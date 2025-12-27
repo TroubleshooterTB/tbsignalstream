@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/firebase';
+import { fetchWithTimeout } from '@/lib/fetch-with-timeout';
+import { env } from '@/config/env';
+import { TIMEOUTS } from '@/config/constants';
 
 export async function POST(request: NextRequest) {
   try {
@@ -24,54 +27,36 @@ export async function POST(request: NextRequest) {
     }
 
     // Forward request to Cloud Run backend with timeout
-    const backendUrl = process.env.NEXT_PUBLIC_TRADING_BOT_URL || 
-                       'https://trading-bot-service-vmxfbt7qiq-el.a.run.app';
-    
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
-    
-    try {
-      const response = await fetch(`${backendUrl}/market_data`, {
+    const response = await fetchWithTimeout(
+      `${env.backendUrl}/market_data`,
+      {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': authHeader,
         },
         body: JSON.stringify({ mode, exchangeTokens }),
-        signal: controller.signal,
-      });
-      
-      clearTimeout(timeoutId);
+      },
+      TIMEOUTS.API_REQUEST
+    );
 
-      if (!response.ok) {
-        // Return empty data instead of error when bot not running
-        return NextResponse.json(
-          { 
-            status: false,
-            message: 'Market data unavailable',
-            data: { fetched: [] }
-          },
-          { status: 200 }
-        );
-      }
-
-      const data = await response.json();
-      return NextResponse.json(data);
-    } catch (fetchError) {
-      clearTimeout(timeoutId);
-      // Handle timeout or network errors
+    if (!response.ok) {
+      // Return empty data instead of error when bot not running
       return NextResponse.json(
         { 
           status: false,
-          message: 'Backend timeout or unavailable',
+          message: 'Market data unavailable',
           data: { fetched: [] }
         },
         { status: 200 }
       );
     }
 
+    const data = await response.json();
+    return NextResponse.json(data);
+
   } catch (error) {
-    // Silently handle errors when bot is not running or market is closed
+    // Handle timeout, network errors, or when bot is not running
     // This prevents console spam for expected failures
     return NextResponse.json(
       { 

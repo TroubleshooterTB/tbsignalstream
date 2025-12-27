@@ -3,7 +3,9 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { websocketApi, tradingBotApi } from '@/lib/trading-api';
 import { useToast } from '@/hooks/use-toast';
+import { notify } from '@/lib/notifications';
 import { NIFTY_50_SYMBOLS_STRING } from '@/lib/nifty50-symbols';
+import { BOT_DEFAULTS, COLLECTIONS } from '@/config/constants';
 import { auth, db } from '@/lib/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import { doc, updateDoc, onSnapshot } from 'firebase/firestore';
@@ -58,10 +60,10 @@ export function TradingProvider({ children }: { children: React.ReactNode }) {
   const [botError, setBotError] = useState<string | null>(null);
   const [botConfig, setBotConfig] = useState({
     symbols: NIFTY_50_SYMBOLS_STRING, // All Nifty 50 stocks
-    mode: 'paper' as 'paper' | 'live',
-    strategy: 'alpha-ensemble' as 'pattern' | 'ironclad' | 'both' | 'defining' | 'alpha-ensemble', // NEW BEST: 36% WR, 2.64 PF, 250% returns
-    maxPositions: '5', // Increased from 3 to allow more opportunities
-    positionSize: '50000', // ₹50,000 total capital (bot manages sizing: 1% risk per trade)
+    mode: BOT_DEFAULTS.MODE,
+    strategy: BOT_DEFAULTS.STRATEGY,
+    maxPositions: String(BOT_DEFAULTS.MAX_POSITIONS),
+    positionSize: String(BOT_DEFAULTS.POSITION_SIZE),
   });
 
   useEffect(() => {
@@ -82,7 +84,7 @@ export function TradingProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!auth.currentUser) return;
 
-    const botConfigRef = doc(db, 'bot_configs', auth.currentUser.uid);
+    const botConfigRef = doc(db, COLLECTIONS.BOT_CONFIGS, auth.currentUser.uid);
     const unsubscribe = onSnapshot(
       botConfigRef, 
       (docSnap) => {
@@ -97,13 +99,8 @@ export function TradingProvider({ children }: { children: React.ReactNode }) {
           if (data.status === 'error' && data.error_message) {
             setBotError(data.error_message);
             
-            // Show error toast
-            toast({
-              title: '❌ Bot Error',
-              description: data.error_message,
-              variant: 'destructive',
-              duration: 10000, // Show for 10 seconds
-            });
+            // Show error toast using centralized notification
+            notify.botError(data.error_message);
             
             console.error('[TradingContext] Bot error detected:', data.error_message);
           } else if (data.status !== 'error') {
@@ -128,16 +125,9 @@ export function TradingProvider({ children }: { children: React.ReactNode }) {
     try {
       const result = await websocketApi.initialize();
       setIsWebSocketConnected(true);
-      toast({
-        title: 'WebSocket Connected',
-        description: result.message || 'Successfully connected to live market data',
-      });
+      notify.wsConnected();
     } catch (error: any) {
-      toast({
-        title: 'Connection Failed',
-        description: error.message,
-        variant: 'destructive',
-      });
+      notify.error('Connection Failed', error.message);
     } finally {
       setIsWebSocketLoading(false);
     }
@@ -148,16 +138,9 @@ export function TradingProvider({ children }: { children: React.ReactNode }) {
     try {
       await websocketApi.close();
       setIsWebSocketConnected(false);
-      toast({
-        title: 'WebSocket Disconnected',
-        description: 'Successfully closed live market data connection',
-      });
+      notify.wsDisconnected();
     } catch (error: any) {
-      toast({
-        title: 'Disconnect Failed',
-        description: error.message,
-        variant: 'destructive',
-      });
+      notify.error('Disconnection Failed', error.message);
     } finally {
       setIsWebSocketLoading(false);
     }

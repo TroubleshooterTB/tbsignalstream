@@ -21,6 +21,7 @@ import { db } from "@/lib/firebase";
 import { collection, query, where, orderBy, limit, onSnapshot, Timestamp } from "firebase/firestore";
 
 type ActivityType = 
+  | "activity" // NEW: Generic activity type for enhanced logging
   | "scan_cycle_start"
   | "symbol_scanning"
   | "symbol_skipped"
@@ -45,6 +46,7 @@ type BotActivity = {
   rr_ratio?: number;
   reason?: string;
   level?: string;
+  message?: string; // NEW: For generic activity messages
   details?: Record<string, any>;
 };
 
@@ -53,7 +55,13 @@ const activityConfig: Record<ActivityType, {
   color: string; 
   label: string;
   bgColor: string;
-}> = {
+}>activity: {
+    icon: <Activity className="h-4 w-4" />,
+    color: "text-slate-600",
+    bgColor: "bg-slate-50",
+    label: "Activity"
+  },
+   = {
   scan_cycle_start: {
     icon: <BarChart3 className="h-4 w-4" />,
     color: "text-slate-600",
@@ -131,7 +139,8 @@ const activityConfig: Record<ActivityType, {
     color: "text-gray-600",
     bgColor: "bg-gray-50",
     label: "Signal Rejected"
-  }
+  }[verboseMode, setVerboseMode] = useState(false); // NEW: Verbose mode toggle
+  const 
 };
 
 export function BotActivityFeed() {
@@ -191,6 +200,7 @@ export function BotActivityFeed() {
             confidence: data.confidence,
             rr_ratio: data.rr_ratio,
             reason: data.reason,
+            message: data.message, // NEW: Generic message
             level: data.level,
             details: data.details || {}
           };
@@ -240,12 +250,25 @@ export function BotActivityFeed() {
             <CardTitle className="text-lg">Bot Activity Feed</CardTitle>
             <Badge variant={isLive ? "default" : "secondary"} className="ml-2">
               {isLive ? "LIVE" : "PAUSED"}
-            </Badge>
-          </div>
-          <button
-            onClick={() => setIsLive(!isLive)}
-            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-          >
+           div className="flex items-center gap-2">
+            <button
+              onClick={() => setVerboseMode(!verboseMode)}
+              className={cn(
+                "text-xs px-2 py-1 rounded transition-colors border",
+                verboseMode 
+                  ? "bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100" 
+                  : "bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100"
+              )}
+            >
+              {verboseMode ? "🔍 Detailed" : "📋 Summary"}
+            </button>
+            <button
+              onClick={() => setIsLive(!isLive)}
+              className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+            >
+              {isLive ? "Pause" : "Resume"}
+            </button>
+          </div
             {isLive ? "Pause" : "Resume"}
           </button>
         </div>
@@ -268,32 +291,45 @@ export function BotActivityFeed() {
             <div className="text-xs text-emerald-600 font-medium">Signals</div>
             <div className="text-lg font-bold text-emerald-700">{stats.signals_generated}</div>
           </div>
-        </div>
-      </CardHeader>
-
-      <CardContent className="flex-1 overflow-hidden p-0">
-        <ScrollArea className="h-full px-4 pb-4" ref={scrollRef}>
-          {activities.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
-              <Activity className="h-12 w-12 mb-2 opacity-20" />
-              <p className="text-sm">Waiting for bot activity...</p>
-              <p className="text-xs mt-1">Pattern scanning runs every 1 second</p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {activities.map((activity) => {
-                const config = activityConfig[activity.type];
+                .filter(activity => {
+                  // In summary mode, hide DEBUG level activities
+                  if (!verboseMode && activity.level === "DEBUG") {
+                    return false;
+                  }
+                  return true;
+                })
+                .map((activity) => {
+                const config = activityConfig[activity.type] || activityConfig.activity;
+                
+                // Determine styling based on level (for new generic activity type)
+                let levelColor = config.color;
+                let levelBg = config.bgColor;
+                if (activity.type === "activity" && activity.level) {
+                  if (activity.level === "ERROR") {
+                    levelColor = "text-red-600";
+                    levelBg = "bg-red-50";
+                  } else if (activity.level === "WARNING") {
+                    levelColor = "text-yellow-600";
+                    levelBg = "bg-yellow-50";
+                  } else if (activity.level === "INFO") {
+                    levelColor = "text-blue-600";
+                    levelBg = "bg-blue-50";
+                  } else if (activity.level === "DEBUG") {
+                    levelColor = "text-gray-500";
+                    levelBg = "bg-gray-50";
+                  }
+                }
                 
                 return (
                   <div
                     key={activity.id}
                     className={cn(
                       "rounded-lg p-3 border transition-all hover:shadow-sm",
-                      config.bgColor
+                      levelBg
                     )}
                   >
                     <div className="flex items-start gap-3">
-                      <div className={cn("mt-0.5", config.color)}>
+                      <div className={cn("mt-0.5", levelColor)}>
                         {config.icon}
                       </div>
                       
@@ -304,6 +340,41 @@ export function BotActivityFeed() {
                               {activity.symbol}
                             </Badge>
                             {activity.pattern && (
+                              <span className="text-xs font-medium text-gray-700">
+                                {activity.pattern}
+                              </span>
+                            )}
+                            {activity.level && activity.type === "activity" && (
+                              <Badge 
+                                variant="outline" 
+                                className={cn(
+                                  "text-xs",
+                                  activity.level === "ERROR" && "border-red-300 text-red-600",
+                                  activity.level === "WARNING" && "border-yellow-300 text-yellow-600",
+                                  activity.level === "INFO" && "border-blue-300 text-blue-600",
+                                  activity.level === "DEBUG" && "border-gray-300 text-gray-500"
+                                )}
+                              >
+                                {activity.level}
+                              </Badge>
+                            )}
+                          </div>
+                          <span className="text-xs text-muted-foreground flex items-center gap-1">
+                            <Clock className="h-3 w-3" />
+                            {formatTime(activity.timestamp)}
+                          </span>
+                        </div>
+                        
+                        {/* Show message if it's a generic activity, otherwise show label */}
+                        {activity.message ? (
+                          <div className={cn("text-sm mb-1", levelColor)}>
+                            {activity.message}
+                          </div>
+                        ) : (
+                          <div className={cn("text-sm font-medium mb-1", levelColor)}>
+                            {config.label}
+                          </div>
+                        )}ctivity.pattern && (
                               <span className="text-xs font-medium text-gray-700">
                                 {activity.pattern}
                               </span>

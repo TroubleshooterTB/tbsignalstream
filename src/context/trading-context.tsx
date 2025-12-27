@@ -4,8 +4,9 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import { websocketApi, tradingBotApi } from '@/lib/trading-api';
 import { useToast } from '@/hooks/use-toast';
 import { NIFTY_50_SYMBOLS_STRING } from '@/lib/nifty50-symbols';
-import { auth } from '@/lib/firebase';
+import { auth, db } from '@/lib/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
+import { doc, updateDoc } from 'firebase/firestore';
 
 interface TradingState {
   // WebSocket state
@@ -144,6 +145,19 @@ export function TradingProvider({ children }: { children: React.ReactNode }) {
     
     setIsBotLoading(true);
     try {
+      // Clear replay mode flag if starting in paper/live mode
+      if (auth.currentUser && botConfig.mode !== 'replay') {
+        try {
+          const botConfigRef = doc(db, 'bot_configs', auth.currentUser.uid);
+          await updateDoc(botConfigRef, {
+            replay_mode: false,
+            replay_date: null
+          });
+        } catch (err) {
+          console.error('Failed to clear replay mode:', err);
+        }
+      }
+      
       // Don't split symbols - it's a universe name (NIFTY50/NIFTY100/NIFTY200)
       // Backend expects the universe string, not an array
       const symbols = botConfig.symbols; // Pass as-is: "NIFTY100"

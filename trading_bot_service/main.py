@@ -12,6 +12,7 @@ import os
 import threading
 from typing import Dict
 import json
+from datetime import datetime
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -33,24 +34,43 @@ logger = logging.getLogger(__name__)
 
 # Initialize Firebase Admin with ADC (Application Default Credentials)
 # On Cloud Run, this automatically uses the service account
-if not firebase_admin._apps:
-    try:
-        # Try with explicit credentials first (for local dev with key file)
-        cred_path = os.path.join(os.path.dirname(__file__), 'firestore-key.json')
-        if os.path.exists(cred_path):
-            cred = credentials.Certificate(cred_path)
-            firebase_admin.initialize_app(cred)
-            logger.info("✅ Firebase initialized with service account key")
-        else:
-            # Use Application Default Credentials (Cloud Run, Cloud Functions)
-            firebase_admin.initialize_app()
-            logger.info("✅ Firebase initialized with ADC")
-    except Exception as e:
-        logger.error(f"❌ Failed to initialize Firebase: {e}")
-        raise
+db = None
+firestore_error = None
 
-db = firestore.client()
-logger.info("✅ Firestore client initialized")
+def initialize_firestore():
+    """Initialize Firestore client with proper error handling"""
+    global db, firestore_error
+    
+    if db is not None:
+        return db
+    
+    try:
+        if not firebase_admin._apps:
+            # Try with explicit credentials first (for local dev with key file)
+            cred_path = os.path.join(os.path.dirname(__file__), 'firestore-key.json')
+            if os.path.exists(cred_path):
+                cred = credentials.Certificate(cred_path)
+                firebase_admin.initialize_app(cred)
+                logger.info("✅ Firebase initialized with service account key")
+            else:
+                # Use Application Default Credentials (Cloud Run, Cloud Functions)
+                firebase_admin.initialize_app()
+                logger.info("✅ Firebase initialized with ADC")
+        
+        db = firestore.client()
+        logger.info("✅ Firestore client initialized")
+        firestore_error = None
+        return db
+        
+    except Exception as e:
+        error_msg = f"Failed to initialize Firestore: {str(e)}"
+        logger.error(f"❌ {error_msg}")
+        firestore_error = error_msg
+        # Don't raise - let the app start so we can report the error
+        return None
+
+# Try to initialize Firestore at startup
+initialize_firestore()
 
 # Load Angel One API key from environment (check multiple possible names)
 ANGEL_ONE_API_KEY = (
@@ -169,11 +189,52 @@ class TradingBotInstance:
 
 @app.route('/health', methods=['GET'])
 def health_check():
-    """Health check endpoint"""
-    return jsonify({
-        'status': 'healthy',
+    """Health check endpoint with initialization status"""
+    global firestore_error
+    
+    status = {
+        'status': 'healthy' if firestore_error is None else 'degraded',
         'active_bots': len(active_bots)
-    }), 200
+    }
+    
+    if firestore_error:
+        status['firestore_error'] = firestore_error
+        status['warning'] = 'Firestore not available - bot operations disabled'
+    
+    return jsonify(status), 200 if firestore_error is None else 503
+
+
+@app.route('/system-status', methods=['GET'])
+def system_status():
+    """System status endpoint for dashboard error reporting"""
+    global firestore_error
+    
+    status = {
+        'timestamp': datetime.now().isoformat(),
+        'backend_operational': True,
+        'firestore_connected': db is not None,
+        'errors': [],
+        'warnings': []
+    }
+    
+    if firestore_error:
+        status['errors'].append({
+            'type': 'FIRESTORE_INITIALIZATION',
+            'severity': 'CRITICAL',
+            'message': firestore_error,
+            'impact': 'Bot operations unavailable - cannot store signals or activity logs',
+            'resolution': 'Check Cloud Run service account has Firestore permissions (roles/datastore.user)'
+        })
+    
+    if not ANGEL_ONE_API_KEY:
+        status['warnings'].append({
+            'type': 'MISSING_API_KEY',
+            'severity': 'WARNING',
+            'message': 'Angel One API key not configured',
+            'impact': 'Live trading unavailable'
+        })
+    
+    return jsonify(status), 200
 
 
 @app.route('/health-detailed', methods=['GET'])
@@ -279,7 +340,20 @@ def check_credentials():
 @app.route('/start', methods=['POST'])
 def start_bot():
     """Start trading bot for a user"""
+    global firestore_error, db
+    
     try:
+        # Check if Firestore is available
+        if db is None:
+            error_response = {
+                'error': 'Backend initialization failed',
+                'details': firestore_error or 'Firestore not available',
+                'severity': 'CRITICAL',
+                'action': 'Please contact support - backend cannot connect to database'
+            }
+            logger.error(f"Bot start rejected: {error_response}")
+            return jsonify(error_response), 503
+        
         # Verify Firebase ID token
         auth_header = request.headers.get('Authorization', '')
         if not auth_header.startswith('Bearer '):

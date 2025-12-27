@@ -44,8 +44,21 @@ class BotActivityLogger:
             verbose_mode: If True, logs every action. If False, only important events.
         """
         self.user_id = user_id
-        self.db = db_client or firestore.client()
-        self.collection = self.db.collection('bot_activity')
+        self.db = db_client
+        self.collection = None
+        self.firestore_available = False
+        
+        # Try to initialize Firestore collection
+        try:
+            if self.db:
+                self.collection = self.db.collection('bot_activity')
+                self.firestore_available = True
+            else:
+                logger.warning(f"⚠️ BotActivityLogger initialized without Firestore - logging disabled for user {user_id}")
+        except Exception as e:
+            logger.error(f"❌ Failed to initialize bot activity logger: {e}")
+            self.firestore_available = False
+        
         self.verbose = verbose_mode  # User can toggle this
         self._last_log_time = {}  # Throttle frequent logs
         logger.info(f"BotActivityLogger initialized for user: {user_id} (Verbose: {verbose_mode})")
@@ -79,6 +92,11 @@ class BotActivityLogger:
             details: Additional details dictionary
             throttle_key: If provided, throttle duplicate messages
         """
+        # If Firestore unavailable, log to console only
+        if not self.firestore_available or not self.collection:
+            logger.info(f"[{level}] {symbol}: {message}")
+            return
+        
         try:
             # Skip DEBUG logs if not in verbose mode
             if level == "DEBUG" and not self.verbose:
@@ -101,7 +119,9 @@ class BotActivityLogger:
             self.collection.add(activity)
             
         except Exception as e:
-            logger.error(f"Failed to log activity: {e}")
+            logger.error(f"Failed to log activity to Firestore: {e}")
+            # Log to console as fallback
+            logger.info(f"[{level}] {symbol}: {message}")
     
     def log_bot_started(self, mode: str, strategy: str, symbols_count: int):
         """Log when bot starts"""

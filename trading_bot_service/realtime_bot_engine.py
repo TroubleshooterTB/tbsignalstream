@@ -13,6 +13,18 @@ import pandas as pd
 import numpy as np
 from collections import defaultdict, deque
 
+# Import comprehensive error handling
+from bot_errors import (
+    BotError, CriticalError, RecoverableError, WarningError,
+    WebSocketError, WebSocketDisconnected, WebSocketTimeout,
+    APIError, TokenExpired, RateLimitExceeded, NetworkTimeout,
+    DataError, MissingCandleData, InvalidPriceData,
+    OrderError, InsufficientMargin, BrokerRejection,
+    BotInternalError, StrategyInitError, FirestoreError
+)
+from error_handler import ErrorHandler, with_error_handling, safe_execute, ErrorContext
+from health_monitor import HealthMonitor, get_health_monitor
+
 logger = logging.getLogger(__name__)
 
 
@@ -81,6 +93,10 @@ class RealtimeBotEngine:
         self._advanced_screening = None  # NEW: Universal 24-level screening layer
         self._ml_logger = None  # NEW: ML data logging for model training
         self._activity_logger = None  # NEW: Real-time activity logging for dashboard
+        
+        # NEW: Error handling and health monitoring
+        self.error_handler = None  # Initialized after activity logger
+        self.health_monitor = get_health_monitor()
         
         # Control flags
         self.is_running = False
@@ -975,6 +991,14 @@ class RealtimeBotEngine:
         except Exception as e:
             logger.error(f"Failed to initialize Activity Logger: {e}")
             self._activity_logger = None  # Disabled mode
+        
+        # NEW: Initialize Error Handler (depends on activity logger)
+        self.error_handler = ErrorHandler(
+            activity_logger=self._activity_logger,
+            max_retries=3,
+            retry_delay=1.0
+        )
+        logger.info("✅ Error Handler initialized (comprehensive error handling enabled)")
         
         # Initialize Ironclad if needed
         if self.strategy in ['ironclad', 'both']:

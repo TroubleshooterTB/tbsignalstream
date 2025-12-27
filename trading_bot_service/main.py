@@ -176,6 +176,51 @@ def health_check():
     }), 200
 
 
+@app.route('/health-detailed', methods=['GET'])
+def health_detailed():
+    """Detailed health check with comprehensive bot status"""
+    try:
+        from health_monitor import get_health_monitor
+        health_monitor = get_health_monitor()
+        
+        # Get detailed health status
+        health_status = health_monitor.get_detailed_status()
+        
+        # Add active bot information
+        health_status['active_bots'] = len(active_bots)
+        health_status['bot_ids'] = list(active_bots.keys())
+        
+        # Add individual bot health if any bots are running
+        if active_bots:
+            health_status['bots'] = {}
+            for user_id, bot_instance in active_bots.items():
+                try:
+                    bot_engine = bot_instance.bot
+                    if bot_engine and hasattr(bot_engine, 'error_handler'):
+                        error_summary = bot_engine.error_handler.get_error_summary()
+                        health_status['bots'][user_id] = {
+                            'running': bot_engine.is_running,
+                            'strategy': bot_engine.strategy,
+                            'mode': bot_engine.trading_mode,
+                            'symbols': len(bot_engine.symbols),
+                            'errors': error_summary
+                        }
+                except Exception as e:
+                    health_status['bots'][user_id] = {
+                        'error': f'Failed to get bot health: {str(e)}'
+                    }
+        
+        return jsonify(health_status), 200
+        
+    except Exception as e:
+        logger.error(f"Failed to get detailed health: {e}")
+        return jsonify({
+            'error': 'Failed to get health status',
+            'message': str(e),
+            'active_bots': len(active_bots)
+        }), 500
+
+
 @app.route('/check-credentials', methods=['GET'])
 def check_credentials():
     """Diagnostic endpoint to verify Angel One credentials are loaded"""

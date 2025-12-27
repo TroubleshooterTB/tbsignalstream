@@ -1,5 +1,6 @@
 """
 Bot Activity Logger - Logs real-time analysis steps to Firestore for dashboard visibility
+ENHANCED: Now with transparent verbose logging for complete bot visibility
 """
 
 import logging
@@ -14,26 +15,247 @@ class BotActivityLogger:
     """
     Logs bot analysis activities to Firestore for real-time dashboard monitoring.
     
+    ENHANCED FEATURES:
+    - Verbose mode toggle (show every action or just important ones)
+    - Scan progress tracking
+    - WebSocket status logging
+    - Performance metrics logging
+    - Complete transparency into bot operations
+    
     Activities include:
     - Pattern detections (even if they fail screening)
     - Confidence scores and R:R ratios
     - 24-level screening results
     - 27-level validation results
     - Final signal generation/rejection
+    - Scan cycles and progress
+    - WebSocket connection status
+    - Data fetching status
+    - Performance metrics
     """
     
-    def __init__(self, user_id: str, db_client=None):
+    def __init__(self, user_id: str, db_client=None, verbose_mode: bool = True):
         """
         Initialize the activity logger.
         
         Args:
             user_id: User ID for activity tracking
             db_client: Firestore client (optional, will create if not provided)
+            verbose_mode: If True, logs every action. If False, only important events.
         """
         self.user_id = user_id
         self.db = db_client or firestore.client()
         self.collection = self.db.collection('bot_activity')
-        logger.info(f"BotActivityLogger initialized for user: {user_id}")
+        self.verbose = verbose_mode  # User can toggle this
+        self._last_log_time = {}  # Throttle frequent logs
+        logger.info(f"BotActivityLogger initialized for user: {user_id} (Verbose: {verbose_mode})")
+    
+    def set_verbose_mode(self, enabled: bool):
+        """Enable or disable verbose logging"""
+        self.verbose = enabled
+        logger.info(f"Verbose mode {'ENABLED' if enabled else 'DISABLED'}")
+    
+    def _should_throttle(self, key: str, seconds: float = 1.0) -> bool:
+        """
+        Check if we should throttle this log entry
+        Prevents flooding Firestore with duplicate messages
+        """
+        now = datetime.now().timestamp()
+        last_time = self._last_log_time.get(key, 0)
+        if now - last_time < seconds:
+            return True
+        self._last_log_time[key] = now
+        return False
+    
+    def log_activity(self, message: str, level: str = "INFO", symbol: str = "SYSTEM",
+                     details: Optional[Dict] = None, throttle_key: Optional[str] = None):
+        """
+        Generic activity logging method.
+        
+        Args:
+            message: Log message
+            level: Log level (INFO, WARNING, ERROR, DEBUG)
+            symbol: Stock symbol or SYSTEM
+            details: Additional details dictionary
+            throttle_key: If provided, throttle duplicate messages
+        """
+        try:
+            # Skip DEBUG logs if not in verbose mode
+            if level == "DEBUG" and not self.verbose:
+                return
+            
+            # Throttle if requested
+            if throttle_key and self._should_throttle(throttle_key):
+                return
+            
+            activity = {
+                'user_id': self.user_id,
+                'timestamp': firestore.SERVER_TIMESTAMP,
+                'type': 'activity',
+                'level': level,
+                'symbol': symbol,
+                'message': message,
+                'details': details or {}
+            }
+            
+            self.collection.add(activity)
+            
+        except Exception as e:
+            logger.error(f"Failed to log activity: {e}")
+    
+    def log_bot_started(self, mode: str, strategy: str, symbols_count: int):
+        """Log when bot starts"""
+        self.log_activity(
+            f"🚀 Bot STARTED | Mode: {mode.upper()} | Strategy: {strategy} | Symbols: {symbols_count}",
+            level="INFO",
+            details={'mode': mode, 'strategy': strategy, 'symbols_count': symbols_count}
+        )
+    
+    def log_websocket_status(self, status: str, details: Optional[Dict] = None):
+        """Log WebSocket connection status changes"""
+        emoji = "🟢" if status == "connected" else "🔴" if status == "disconnected" else "🟡"
+        self.log_activity(
+            f"{emoji} WebSocket {status.upper()}",
+            level="INFO" if status == "connected" else "WARNING",
+            details=details
+        )
+    
+    def log_data_fetch(self, symbol: str, success: bool, time_taken: float,
+                       candles_count: Optional[int] = None):
+        """Log data fetching for a symbol"""
+        if success:
+            if time_taken > 3.0:
+                self.log_activity(
+                    f"🐌 Slow data fetch for {symbol} ({time_taken:.1f}s)",
+                    level="WARNING",
+                    symbol=symbol,
+                    details={'time_taken': time_taken, 'candles': candles_count}
+                )
+            elif self.verbose:
+                self.log_activity(
+                    f"✅ Data fetched for {symbol} ({time_taken:.1f}s, {candles_count} candles)",
+                    level="DEBUG",
+                    symbol=symbol,
+                    details={'time_taken': time_taken, 'candles': candles_count}
+                )
+        else:
+            self.log_activity(
+                f"❌ Failed to fetch data for {symbol}",
+                level="ERROR",
+                symbol=symbol,
+                details={'time_taken': time_taken}
+            )
+    
+    def log_scan_progress(self, current: int, total: int, symbol: str):
+        """Log scan progress (only in verbose mode)"""
+        if not self.verbose:
+            return
+        
+        # Only log every 5th symbol to avoid spam
+        if current % 5 == 0 or current == total:
+            percentage = (current / total * 100) if total > 0 else 0
+            self.log_activity(
+                f"🔄 Scanning {symbol} ({current}/{total} - {percentage:.0f}%)",
+                level="DEBUG",
+                symbol=symbol,
+                details={'current': current, 'total': total, 'percentage': percentage},
+                throttle_key=f"scan_progress_{current // 5}"
+            )
+    
+    def log_indicator_values(self, symbol: str, indicators: Dict):
+        """Log current indicator values for a symbol"""
+        if not self.verbose:
+            return
+        
+        # Format indicator string
+        indicator_str = ", ".join([f"{k.upper()}: {v:.2f}" for k, v in indicators.items() if isinstance(v, (int, float))])
+        
+        self.log_activity(
+            f"📊 {symbol} indicators: {indicator_str}",
+            level="DEBUG",
+            symbol=symbol,
+            details=indicators,
+            throttle_key=f"indicators_{symbol}"
+        )
+    
+    def log_pattern_analysis(self, symbol: str, patterns_found: int, best_pattern: Optional[str] = None):
+        """Log pattern analysis results"""
+        if patterns_found > 0:
+            self.log_activity(
+                f"🎯 {symbol}: Found {patterns_found} pattern(s) | Best: {best_pattern}",
+                level="INFO",
+                symbol=symbol,
+                details={'patterns_found': patterns_found, 'best_pattern': best_pattern}
+            )
+        elif self.verbose:
+            self.log_activity(
+                f"❌ {symbol}: No patterns detected",
+                level="DEBUG",
+                symbol=symbol,
+                details={'patterns_found': 0}
+            )
+    
+    def log_screening_decision(self, symbol: str, pattern: str, passed: bool, 
+                             reason: str, level_details: Optional[Dict] = None):
+        """Log screening decision with reason"""
+        emoji = "✅" if passed else "❌"
+        message = f"{emoji} {symbol} {pattern}: {'PASSED' if passed else 'FAILED'} screening - {reason}"
+        
+        self.log_activity(
+            message,
+            level="INFO" if passed else "DEBUG",
+            symbol=symbol,
+            details={'pattern': pattern, 'passed': passed, 'reason': reason, 'levels': level_details}
+        )
+    
+    def log_performance_metric(self, metric_name: str, value: float, unit: str = ""):
+        """Log performance metrics"""
+        if not self.verbose:
+            return
+        
+        self.log_activity(
+            f"⏱️ {metric_name}: {value:.2f}{unit}",
+            level="DEBUG",
+            details={'metric': metric_name, 'value': value, 'unit': unit},
+            throttle_key=f"perf_{metric_name}"
+        )
+    
+    def log_error(self, error_message: str, context: str = "", severity: str = "ERROR"):
+        """Log errors with context"""
+        self.log_activity(
+            f"🔴 {error_message}" + (f" | Context: {context}" if context else ""),
+            level=severity,
+            details={'context': context}
+        )
+    
+    def log_order_placed(self, symbol: str, side: str, quantity: int, price: float,
+                        order_id: Optional[str] = None):
+        """Log order placement"""
+        self.log_activity(
+            f"💰 ORDER PLACED: {side.upper()} {quantity} {symbol} @ ₹{price:.2f}",
+            level="INFO",
+            symbol=symbol,
+            details={
+                'side': side,
+                'quantity': quantity,
+                'price': price,
+                'order_id': order_id
+            }
+        )
+    
+    def log_position_update(self, symbol: str, status: str, pnl: float, pnl_pct: float):
+        """Log position updates"""
+        emoji = "🟢" if pnl > 0 else "🔴" if pnl < 0 else "⚪"
+        self.log_activity(
+            f"{emoji} {symbol}: {status} | P&L: ₹{pnl:.2f} ({pnl_pct:+.2f}%)",
+            level="INFO",
+            symbol=symbol,
+            details={
+                'status': status,
+                'pnl': pnl,
+                'pnl_pct': pnl_pct
+            }
+        )
     
     def log_pattern_detected(self, symbol: str, pattern: str, confidence: float, 
                             rr_ratio: float, details: Optional[Dict] = None):

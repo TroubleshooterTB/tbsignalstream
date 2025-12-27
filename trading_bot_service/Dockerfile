@@ -25,6 +25,7 @@ COPY ml_data_logger.py ./
 COPY ironclad_strategy.py ./
 COPY defining_order_strategy.py ./
 COPY run_backtest_defining_order.py ./
+COPY nifty200_watchlist.py ./
 COPY entrypoint.sh ./
 COPY ws_manager/ ./ws_manager/
 COPY trading/ ./trading/

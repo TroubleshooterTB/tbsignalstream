@@ -170,10 +170,12 @@ export function BotActivityFeed() {
       limit(50) // Last 50 activities
     );
 
-    const unsubscribe = onSnapshot(activitiesQuery, (snapshot) => {
-      console.log(`[BotActivity] Received ${snapshot.docs.length} activities, ${snapshot.docChanges().length} changes`);
-      
-      snapshot.docChanges().forEach((change) => {
+    const unsubscribe = onSnapshot(
+      activitiesQuery, 
+      (snapshot) => {
+        console.log(`[BotActivity] Received ${snapshot.docs.length} activities, ${snapshot.docChanges().length} changes`);
+        
+        snapshot.docChanges().forEach((change) => {
         if (change.type === 'added') {
           const data = change.doc.data();
           

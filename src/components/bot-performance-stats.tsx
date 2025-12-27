@@ -59,8 +59,10 @@ export function BotPerformanceStats() {
       orderBy('timestamp', 'desc')
     );
 
-    const unsubscribe = onSnapshot(signalsQuery, (snapshot) => {
-      console.log('[BotPerformance] Received signals:', snapshot.docs.length);
+    const unsubscribe = onSnapshot(
+      signalsQuery, 
+      (snapshot) => {
+        console.log('[BotPerformance] Received signals:', snapshot.docs.length);
 
       let buySignals = 0;
       let sellSignals = 0;

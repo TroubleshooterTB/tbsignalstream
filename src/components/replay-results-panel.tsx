@@ -65,6 +65,9 @@ export function ReplayResultsPanel() {
           setIsReplayActive(data.replay_mode === true);
           setReplayDate(data.replay_date || null);
         }
+      },
+      (error) => {
+        console.warn('[ReplayResults] Config listener error:', error.message);
       }
     );
 
@@ -76,10 +79,12 @@ export function ReplayResultsPanel() {
       orderBy('timestamp', 'desc')
     );
 
-    const signalsUnsubscribe = onSnapshot(signalsQuery, (snapshot) => {
-      const signals: ReplaySignal[] = [];
-      
-      snapshot.forEach((doc) => {
+    const signalsUnsubscribe = onSnapshot(
+      signalsQuery, 
+      (snapshot) => {
+        const signals: ReplaySignal[] = [];
+        
+        snapshot.forEach((doc) => {
         const data = doc.data();
         signals.push({
           id: doc.id,
@@ -100,7 +105,12 @@ export function ReplayResultsPanel() {
 
       setReplaySignals(signals);
       calculateStats(signals);
-    });
+    },
+    (error) => {
+      console.warn('[ReplayResults] Signals listener error:', error.message);
+      setReplaySignals([]);
+    }
+    );
 
     return () => {
       configUnsubscribe();

@@ -83,33 +83,41 @@ export function TradingProvider({ children }: { children: React.ReactNode }) {
     if (!auth.currentUser) return;
 
     const botConfigRef = doc(db, 'bot_configs', auth.currentUser.uid);
-    const unsubscribe = onSnapshot(botConfigRef, (docSnap) => {
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        
-        // Update bot status
-        const isRunning = data.status === 'running';
-        setIsBotRunning(isRunning);
-        
-        // Check for errors
-        if (data.status === 'error' && data.error_message) {
-          setBotError(data.error_message);
+    const unsubscribe = onSnapshot(
+      botConfigRef, 
+      (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
           
-          // Show error toast
-          toast({
-            title: '❌ Bot Error',
-            description: data.error_message,
-            variant: 'destructive',
-            duration: 10000, // Show for 10 seconds
-          });
+          // Update bot status
+          const isRunning = data.status === 'running';
+          setIsBotRunning(isRunning);
           
-          console.error('[TradingContext] Bot error detected:', data.error_message);
-        } else if (data.status !== 'error') {
-          // Clear error when bot is running or stopped normally
-          setBotError(null);
+          // Check for errors
+          if (data.status === 'error' && data.error_message) {
+            setBotError(data.error_message);
+            
+            // Show error toast
+            toast({
+              title: '❌ Bot Error',
+              description: data.error_message,
+              variant: 'destructive',
+              duration: 10000, // Show for 10 seconds
+            });
+            
+            console.error('[TradingContext] Bot error detected:', data.error_message);
+          } else if (data.status !== 'error') {
+            // Clear error when bot is running or stopped normally
+            setBotError(null);
+          }
         }
+      },
+      (error) => {
+        // Handle permission denied and other errors silently
+        console.warn('[TradingContext] Bot config listener error:', error.message);
+        // Don't show error to user - they might not have set up bot yet
       }
-    });
+    );
 
     return () => unsubscribe();
   }, [toast]);

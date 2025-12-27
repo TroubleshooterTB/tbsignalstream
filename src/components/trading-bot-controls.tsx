@@ -7,13 +7,15 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2, Play, Square, Bot } from 'lucide-react';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Loader2, Play, Square, Bot, AlertCircle } from 'lucide-react';
 import { useTradingContext } from '@/context/trading-context';
 
 export function TradingBotControls() {
   const {
     isBotRunning,
     isBotLoading,
+    botError,
     botConfig,
     startTradingBot,
     stopTradingBot,
@@ -37,6 +39,15 @@ export function TradingBotControls() {
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
+        {/* Error Display */}
+        {botError && (
+          <Alert variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+            <AlertTitle>Bot Error</AlertTitle>
+            <AlertDescription>{botError}</AlertDescription>
+          </Alert>
+        )}
+
         <div className="space-y-2">
           <Label htmlFor="symbols">Symbol Universe</Label>
           <Select

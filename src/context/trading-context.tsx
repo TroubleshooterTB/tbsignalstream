@@ -6,7 +6,7 @@ import { useToast } from '@/hooks/use-toast';
 import { NIFTY_50_SYMBOLS_STRING } from '@/lib/nifty50-symbols';
 import { auth, db } from '@/lib/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
-import { doc, updateDoc } from 'firebase/firestore';
+import { doc, updateDoc, onSnapshot } from 'firebase/firestore';
 
 interface TradingState {
   // WebSocket state
@@ -16,6 +16,7 @@ interface TradingState {
   // Trading bot state
   isBotRunning: boolean;
   isBotLoading: boolean;
+  botError: string | null;
   botConfig: {
     symbols: string;
     mode: 'paper' | 'live' | 'replay';
@@ -54,6 +55,7 @@ export function TradingProvider({ children }: { children: React.ReactNode }) {
   // Trading bot state
   const [isBotRunning, setIsBotRunning] = useState(false);
   const [isBotLoading, setIsBotLoading] = useState(false);
+  const [botError, setBotError] = useState<string | null>(null);
   const [botConfig, setBotConfig] = useState({
     symbols: NIFTY_50_SYMBOLS_STRING, // All Nifty 50 stocks
     mode: 'paper' as 'paper' | 'live',
@@ -75,6 +77,42 @@ export function TradingProvider({ children }: { children: React.ReactNode }) {
     
     return () => unsubscribe();
   }, []);
+
+  // Real-time listener for bot status and errors
+  useEffect(() => {
+    if (!auth.currentUser) return;
+
+    const botConfigRef = doc(db, 'bot_configs', auth.currentUser.uid);
+    const unsubscribe = onSnapshot(botConfigRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        
+        // Update bot status
+        const isRunning = data.status === 'running';
+        setIsBotRunning(isRunning);
+        
+        // Check for errors
+        if (data.status === 'error' && data.error_message) {
+          setBotError(data.error_message);
+          
+          // Show error toast
+          toast({
+            title: '❌ Bot Error',
+            description: data.error_message,
+            variant: 'destructive',
+            duration: 10000, // Show for 10 seconds
+          });
+          
+          console.error('[TradingContext] Bot error detected:', data.error_message);
+        } else if (data.status !== 'error') {
+          // Clear error when bot is running or stopped normally
+          setBotError(null);
+        }
+      }
+    });
+
+    return () => unsubscribe();
+  }, [toast]);
   
   // WebSocket methods
   const connectWebSocket = useCallback(async () => {
@@ -325,6 +363,7 @@ export function TradingProvider({ children }: { children: React.ReactNode }) {
     isWebSocketLoading,
     isBotRunning,
     isBotLoading,
+    botError,
     botConfig,
     
     // Methods

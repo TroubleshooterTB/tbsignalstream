@@ -12,7 +12,6 @@ import os
 import threading
 from typing import Dict
 import json
-from datetime import datetime
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -34,43 +33,24 @@ logger = logging.getLogger(__name__)
 
 # Initialize Firebase Admin with ADC (Application Default Credentials)
 # On Cloud Run, this automatically uses the service account
-db = None
-firestore_error = None
-
-def initialize_firestore():
-    """Initialize Firestore client with proper error handling"""
-    global db, firestore_error
-    
-    if db is not None:
-        return db
-    
+if not firebase_admin._apps:
     try:
-        if not firebase_admin._apps:
-            # Try with explicit credentials first (for local dev with key file)
-            cred_path = os.path.join(os.path.dirname(__file__), 'firestore-key.json')
-            if os.path.exists(cred_path):
-                cred = credentials.Certificate(cred_path)
-                firebase_admin.initialize_app(cred)
-                logger.info("✅ Firebase initialized with service account key")
-            else:
-                # Use Application Default Credentials (Cloud Run, Cloud Functions)
-                firebase_admin.initialize_app()
-                logger.info("✅ Firebase initialized with ADC")
-        
-        db = firestore.client()
-        logger.info("✅ Firestore client initialized")
-        firestore_error = None
-        return db
-        
+        # Try with explicit credentials first (for local dev with key file)
+        cred_path = os.path.join(os.path.dirname(__file__), 'firestore-key.json')
+        if os.path.exists(cred_path):
+            cred = credentials.Certificate(cred_path)
+            firebase_admin.initialize_app(cred)
+            logger.info("✅ Firebase initialized with service account key")
+        else:
+            # Use Application Default Credentials (Cloud Run, Cloud Functions)
+            firebase_admin.initialize_app()
+            logger.info("✅ Firebase initialized with ADC")
     except Exception as e:
-        error_msg = f"Failed to initialize Firestore: {str(e)}"
-        logger.error(f"❌ {error_msg}")
-        firestore_error = error_msg
-        # Don't raise - let the app start so we can report the error
-        return None
+        logger.error(f"❌ Failed to initialize Firebase: {e}")
+        raise
 
-# Try to initialize Firestore at startup
-initialize_firestore()
+db = firestore.client()
+logger.info("✅ Firestore client initialized")
 
 # Load Angel One API key from environment (check multiple possible names)
 ANGEL_ONE_API_KEY = (
@@ -156,13 +136,6 @@ class TradingBotInstance:
         logger.info(f"Bot loop started for user {self.user_id}")
         
         try:
-            # Check if replay mode
-            is_replay = self.mode == 'replay'
-            replay_date = self.credentials.get('replay_date') if is_replay else None
-            
-            if is_replay:
-                logger.info(f"🔄 REPLAY MODE: Running bot simulation for {replay_date}")
-            
             # Import REAL-TIME bot engine
             from realtime_bot_engine import RealtimeBotEngine
             
@@ -173,8 +146,7 @@ class TradingBotInstance:
                 symbols=self.symbols,
                 trading_mode=self.mode,
                 strategy=self.strategy,
-                db_client=db,  # Pass Firestore client for Activity Logger
-                replay_date=replay_date  # Pass replay date if in replay mode
+                db_client=db  # Pass Firestore client for Activity Logger
             )
             
             # Run the bot (WebSocket-powered real-time execution)
@@ -197,136 +169,27 @@ class TradingBotInstance:
 
 @app.route('/health', methods=['GET'])
 def health_check():
-    """Health check endpoint with initialization status"""
-    global firestore_error
-    
-    status = {
-        'status': 'healthy' if firestore_error is None else 'degraded',
+    """Health check endpoint"""
+    return jsonify({
+        'status': 'healthy',
         'active_bots': len(active_bots)
-    }
-    
-    if firestore_error:
-        status['firestore_error'] = firestore_error
-        status['warning'] = 'Firestore not available - bot operations disabled'
-    
-    return jsonify(status), 200 if firestore_error is None else 503
-
-
-@app.route('/system-status', methods=['GET'])
-def system_status():
-    """System status endpoint for dashboard error reporting"""
-    global firestore_error
-    
-    status = {
-        'timestamp': datetime.now().isoformat(),
-        'backend_operational': True,
-        'firestore_connected': db is not None,
-        'errors': [],
-        'warnings': []
-    }
-    
-    if firestore_error:
-        status['errors'].append({
-            'type': 'FIRESTORE_INITIALIZATION',
-            'severity': 'CRITICAL',
-            'message': firestore_error,
-            'impact': 'Bot operations unavailable - cannot store signals or activity logs',
-            'resolution': 'Check Cloud Run service account has Firestore permissions (roles/datastore.user)'
-        })
-    
-    if not ANGEL_ONE_API_KEY:
-        status['warnings'].append({
-            'type': 'MISSING_API_KEY',
-            'severity': 'WARNING',
-            'message': 'Angel One API key not configured',
-            'impact': 'Live trading unavailable'
-        })
-    
-    return jsonify(status), 200
-
-
-@app.route('/health-detailed', methods=['GET'])
-def health_detailed():
-    """Detailed health check with comprehensive bot status"""
-    try:
-        from health_monitor import get_health_monitor
-        health_monitor = get_health_monitor()
-        
-        # Get detailed health status
-        health_status = health_monitor.get_detailed_status()
-        
-        # Add active bot information
-        health_status['active_bots'] = len(active_bots)
-        health_status['bot_ids'] = list(active_bots.keys())
-        
-        # Add individual bot health if any bots are running
-        if active_bots:
-            health_status['bots'] = {}
-            for user_id, bot_instance in active_bots.items():
-                try:
-                    bot_engine = bot_instance.bot
-                    if bot_engine and hasattr(bot_engine, 'error_handler'):
-                        error_summary = bot_engine.error_handler.get_error_summary()
-                        health_status['bots'][user_id] = {
-                            'running': bot_engine.is_running,
-                            'strategy': bot_engine.strategy,
-                            'mode': bot_engine.trading_mode,
-                            'symbols': len(bot_engine.symbols),
-                            'errors': error_summary
-                        }
-                except Exception as e:
-                    health_status['bots'][user_id] = {
-                        'error': f'Failed to get bot health: {str(e)}'
-                    }
-        
-        return jsonify(health_status), 200
-        
-    except Exception as e:
-        logger.error(f"Failed to get detailed health: {e}")
-        return jsonify({
-            'error': 'Failed to get health status',
-            'message': str(e),
-            'active_bots': len(active_bots)
-        }), 500
+    }), 200
 
 
 @app.route('/check-credentials', methods=['GET'])
 def check_credentials():
     """Diagnostic endpoint to verify Angel One credentials are loaded"""
     try:
-        # Check for credentials with multiple naming variants
-        api_key = (
-            os.environ.get('ANGELONE_TRADING_API_KEY', '') or
-            os.environ.get('ANGELONE_API_KEY', '') or
-            os.environ.get('ANGEL_ONE_API_KEY', '')
-        )
-        api_secret = (
-            os.environ.get('ANGELONE_TRADING_SECRET', '') or
-            os.environ.get('ANGELONE_API_SECRET', '') or
-            os.environ.get('ANGEL_ONE_API_SECRET', '')
-        )
-        client_code = (
-            os.environ.get('ANGELONE_CLIENT_CODE', '') or
-            os.environ.get('ANGEL_ONE_CLIENT_CODE', '')
-        )
-        password = (
-            os.environ.get('ANGELONE_PASSWORD', '') or
-            os.environ.get('ANGEL_ONE_PASSWORD', '')
-        )
-        totp_secret = (
-            os.environ.get('ANGELONE_TOTP_SECRET', '') or
-            os.environ.get('ANGEL_ONE_TOTP_SECRET', '')
-        )
-        
         credentials_status = {
-            'ANGELONE_TRADING_API_KEY': 'SET' if api_key else 'MISSING',
-            'ANGELONE_TRADING_SECRET': 'SET' if api_secret else 'MISSING',
-            'ANGELONE_CLIENT_CODE': 'SET' if client_code else 'MISSING',
-            'ANGELONE_PASSWORD': 'SET' if password else 'MISSING',
-            'ANGELONE_TOTP_SECRET': 'SET' if totp_secret else 'MISSING',
+            'ANGEL_ONE_API_KEY': 'SET' if os.environ.get('ANGEL_ONE_API_KEY') else 'MISSING',
+            'ANGEL_ONE_API_SECRET': 'SET' if os.environ.get('ANGEL_ONE_API_SECRET') else 'MISSING',
+            'ANGEL_ONE_CLIENT_CODE': 'SET' if os.environ.get('ANGEL_ONE_CLIENT_CODE') else 'MISSING',
+            'ANGEL_ONE_PASSWORD': 'SET' if os.environ.get('ANGEL_ONE_PASSWORD') else 'MISSING',
+            'ANGEL_ONE_TOTP_SECRET': 'SET' if os.environ.get('ANGEL_ONE_TOTP_SECRET') else 'MISSING',
         }
         
         # Show first 4 chars of API key for verification (safely)
+        api_key = os.environ.get('ANGEL_ONE_API_KEY', '')
         api_key_preview = f"{api_key[:4]}..." if len(api_key) >= 4 else "EMPTY"
         
         all_set = all(status == 'SET' for status in credentials_status.values())
@@ -348,20 +211,7 @@ def check_credentials():
 @app.route('/start', methods=['POST'])
 def start_bot():
     """Start trading bot for a user"""
-    global firestore_error, db
-    
     try:
-        # Check if Firestore is available
-        if db is None:
-            error_response = {
-                'error': 'Backend initialization failed',
-                'details': firestore_error or 'Firestore not available',
-                'severity': 'CRITICAL',
-                'action': 'Please contact support - backend cannot connect to database'
-            }
-            logger.error(f"Bot start rejected: {error_response}")
-            return jsonify(error_response), 503
-        
         # Verify Firebase ID token
         auth_header = request.headers.get('Authorization', '')
         if not auth_header.startswith('Bearer '):
@@ -382,14 +232,6 @@ def start_bot():
         interval = data.get('interval', '5minute')
         mode = data.get('mode', 'paper')  # 'paper' or 'live'
         strategy = data.get('strategy', 'alpha-ensemble')  # Strategy selection
-        
-        # PHASE 3: Replay Mode Support
-        replay_date = data.get('replay_date')  # Format: 'YYYY-MM-DD' e.g., '2024-12-20'
-        is_replay_mode = replay_date is not None
-        
-        if is_replay_mode:
-            logger.info(f"🔄 Starting bot in REPLAY MODE for date: {replay_date}")
-            mode = 'replay'  # Override mode
         
         # Convert symbol universe to actual symbol list
         # For Alpha-Ensemble and other strategies with built-in screening,
@@ -420,17 +262,13 @@ def start_bot():
         # Add API key to credentials
         credentials['api_key'] = ANGEL_ONE_API_KEY
         
-        # Add replay mode config if applicable
-        if is_replay_mode:
-            credentials['replay_date'] = replay_date
-        
         # Create and start bot instance
         bot = TradingBotInstance(user_id, symbols, interval, credentials, mode, strategy)
         if bot.start():
             active_bots[user_id] = bot
             
             # Update Firestore status
-            status_data = {
+            db.collection('bot_configs').document(user_id).set({
                 'status': 'running',
                 'symbols': symbols,
                 'interval': interval,
@@ -438,13 +276,7 @@ def start_bot():
                 'strategy': strategy,
                 'started_at': firestore.SERVER_TIMESTAMP,
                 'updated_at': firestore.SERVER_TIMESTAMP
-            }
-            
-            if is_replay_mode:
-                status_data['replay_date'] = replay_date
-                status_data['replay_mode'] = True
-            
-            db.collection('bot_configs').document(user_id).set(status_data, merge=True)
+            }, merge=True)
             
             return jsonify({
                 'status': 'success',

@@ -120,11 +120,13 @@ export function TradingBotControls() {
         <div className="flex items-center justify-between p-4 bg-amber-50 dark:bg-amber-950 rounded-lg border border-amber-200 dark:border-amber-800">
           <div className="flex flex-col gap-1">
             <Label htmlFor="liveMode" className="cursor-pointer font-semibold">
-              {botConfig.mode === 'live' ? '🔴 LIVE TRADING MODE' : '📄 Paper Trading Mode'}
+              {botConfig.mode === 'live' ? '🔴 LIVE TRADING MODE' : botConfig.mode === 'replay' ? '🔄 REPLAY MODE' : '📄 Paper Trading Mode'}
             </Label>
             <span className="text-sm text-muted-foreground">
               {botConfig.mode === 'live' 
                 ? 'Real money will be used. Trades will be executed on your broker account.' 
+                : botConfig.mode === 'replay'
+                ? 'Test bot on historical date. No real trades.'
                 : 'Simulated trading. No real money will be used.'}
             </span>
           </div>
@@ -132,8 +134,46 @@ export function TradingBotControls() {
             id="liveMode"
             checked={botConfig.mode === 'live'}
             onCheckedChange={(checked) => updateBotConfig({ mode: checked ? 'live' : 'paper' })}
-            disabled={isBotRunning}
+            disabled={isBotRunning || botConfig.mode === 'replay'}
           />
+        </div>
+
+        {/* Phase 3: Replay Mode Option */}
+        <div className="p-4 bg-blue-50 dark:bg-blue-950 rounded-lg border border-blue-200 dark:border-blue-800 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="replayMode" className="cursor-pointer font-semibold">
+                🔄 Replay Mode (Historical Testing)
+              </Label>
+              <span className="text-sm text-muted-foreground">
+                Test your live bot on a past date to see how it would have performed
+              </span>
+            </div>
+            <Switch
+              id="replayMode"
+              checked={botConfig.mode === 'replay'}
+              onCheckedChange={(checked) => updateBotConfig({ mode: checked ? 'replay' : 'paper' })}
+              disabled={isBotRunning}
+            />
+          </div>
+          
+          {botConfig.mode === 'replay' && (
+            <div className="space-y-2 pt-2 border-t border-blue-200 dark:border-blue-800">
+              <Label htmlFor="replayDate">Select Historical Date</Label>
+              <Input
+                id="replayDate"
+                type="date"
+                value={botConfig.replayDate || ''}
+                onChange={(e) => updateBotConfig({ replayDate: e.target.value })}
+                disabled={isBotRunning}
+                max={new Date().toISOString().split('T')[0]}
+                min={new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]} // Last 90 days
+              />
+              <p className="text-xs text-blue-600 dark:text-blue-400">
+                ⚡ Bot will replay the entire trading day at accelerated speed
+              </p>
+            </div>
+          )}
         </div>
 
         <div className="flex gap-2 pt-2">

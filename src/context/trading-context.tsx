@@ -17,10 +17,11 @@ interface TradingState {
   isBotLoading: boolean;
   botConfig: {
     symbols: string;
-    mode: 'paper' | 'live';
+    mode: 'paper' | 'live' | 'replay';
     strategy: 'pattern' | 'ironclad' | 'both' | 'defining' | 'alpha-ensemble';
     maxPositions: string;
     positionSize: string;
+    replayDate?: string;  // Phase 3: Replay Mode
   };
 }
 
@@ -156,18 +157,43 @@ export function TradingProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      const result = await tradingBotApi.start({
+      // Phase 3: Validate replay mode
+      if (botConfig.mode === 'replay' && !botConfig.replayDate) {
+        toast({
+          title: 'Replay Mode Error',
+          description: 'Please select a historical date for replay mode',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      const requestData: any = {
         symbols, // Send "NIFTY100" not ["NIFTY100"]
         mode: botConfig.mode,
         strategy: botConfig.strategy,
         maxPositions: parseInt(botConfig.maxPositions),
         positionSize: parseFloat(botConfig.positionSize),
-      });
+      };
+      
+      // Add replay date if in replay mode
+      if (botConfig.mode === 'replay' && botConfig.replayDate) {
+        requestData.replay_date = botConfig.replayDate;
+      }
+
+      const result = await tradingBotApi.start(requestData);
       
       // Show starting message
+      const modeText = botConfig.mode === 'replay' 
+        ? `🔄 Replay Mode on ${botConfig.replayDate}` 
+        : botConfig.mode === 'live' 
+        ? '🔴 Live Trading' 
+        : '📄 Paper Trading';
+      
       toast({
-        title: 'Bot Starting...',
-        description: 'Initializing WebSocket and loading data. Please wait 20 seconds...',
+        title: `Bot Starting... ${modeText}`,
+        description: botConfig.mode === 'replay' 
+          ? 'Loading historical data and replaying trading day...'
+          : 'Initializing WebSocket and loading data. Please wait 20 seconds...',
       });
       
       // Wait for bot to initialize

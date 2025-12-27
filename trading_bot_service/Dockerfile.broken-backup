@@ -1,0 +1,35 @@
+# Use Python 3.11 slim image
+FROM python:3.11-slim
+
+# Set working directory
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements first for better caching
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Invalidate cache for code changes
+ARG CACHE_BUST=1
+
+# Copy application code
+COPY . .
+
+# Debug: List what was copied
+RUN ls -la /app/ | head -50
+
+# Test if Python can import app
+RUN python -c "import sys; sys.path.insert(0, '/app'); import app; print('✅ Successfully imported app.py, Flask app:', app.app)"
+
+# Set environment variables
+ENV PYTHONPATH=/app
+ENV PYTHONUNBUFFERED=1
+ENV PORT=8080
+ENV FLASK_APP=app.py
+
+# Run diagnostic startup script
+CMD exec python /app/startup.py

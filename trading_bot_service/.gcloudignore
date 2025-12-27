@@ -1,19 +1,20 @@
-.gcloudignore
+# Exclude these from Cloud Build
 __pycache__/
 *.pyc
 *.pyo
-*.pyd
-.Python
-*.so
-*.egg
-*.egg-info/
-dist/
-build/
-.env
-.venv
+.git/
+.venv/
 venv/
 *.log
 .DS_Store
-.git/
-.gitignore
-README.md
+*.csv
+README*.md
+*.md
+!requirements.txt
+
+# Explicitly include Python files
+!*.py
+!main.py
+!realtime_bot_engine.py
+!bot_activity_logger.py
+!historical_data_manager.py

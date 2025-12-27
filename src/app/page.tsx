@@ -1,10 +1,11 @@
 // Forcing a rebuild to clear any potential caching issues.
-// Version: 2.1 - Cache busting enabled
+// Version: 2.3 - System Health Monitoring
 "use client";
 
 import dynamic from "next/dynamic";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useEffect } from "react";
+import SystemHealthMonitor from "@/components/system-health-monitor";
 
 // Dynamically import the dashboard to avoid SSR issues with Firebase
 const LiveAlertsDashboard = dynamic(
@@ -26,7 +27,7 @@ const LiveAlertsDashboard = dynamic(
 export default function Home() {
   // Force clear any stale data on mount
   useEffect(() => {
-    console.log('[App] Page mounted - v2.2 - GHOST SIGNAL FIX');
+    console.log('[App] Page mounted - v2.3 - HEALTH MONITORING');
     // Clear any potential browser cache
     if (typeof window !== 'undefined') {
       localStorage.removeItem('cachedSignals');
@@ -36,5 +37,10 @@ export default function Home() {
     }
   }, []);
   
-  return <LiveAlertsDashboard />;
+  return (
+    <>
+      <SystemHealthMonitor />
+      <LiveAlertsDashboard />
+    </>
+  );
 }

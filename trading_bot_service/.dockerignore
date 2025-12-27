@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+*.pyo
+.git/
+.venv/
+venv/
+*.log
+.DS_Store
+*.csv
+README*.md
+*.md
+!requirements.txt

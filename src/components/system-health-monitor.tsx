@@ -81,7 +81,7 @@ export default function SystemHealthMonitor() {
   return (
     <div className="fixed top-0 left-0 right-0 z-50">
       {/* Critical Error Banner */}
-      {hasCriticalErrors && (
+      {hasCriticalErrors && status && (
         <div className="bg-red-600 text-white px-4 py-3 shadow-lg">
           <div className="max-w-7xl mx-auto flex items-start justify-between gap-4">
             <div className="flex items-start gap-3 flex-1">
@@ -120,7 +120,7 @@ export default function SystemHealthMonitor() {
       )}
 
       {/* Warnings Banner */}
-      {!hasCriticalErrors && status?.warnings.length > 0 && (
+      {!hasCriticalErrors && status && status.warnings && status.warnings.length > 0 && (
         <div className="bg-yellow-50 border-b border-yellow-200 px-4 py-3">
           <div className="max-w-7xl mx-auto flex items-start gap-3">
             <AlertTriangle className="h-5 w-5 text-yellow-600 flex-shrink-0 mt-0.5" />

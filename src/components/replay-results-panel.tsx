@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { db } from '@/lib/firebase';
-import { collection, query, where, onSnapshot, orderBy, Timestamp } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, orderBy, Timestamp, doc } from 'firebase/firestore';
 import { useAuth } from '@/context/auth-context';
 import { Clock, TrendingUp, TrendingDown, Target, AlertCircle, CheckCircle, XCircle, Calendar } from 'lucide-react';
 
@@ -37,7 +37,7 @@ interface ReplayStats {
 }
 
 export function ReplayResultsPanel() {
-  const { user } = useAuth();
+  const { firebaseUser } = useAuth();
   const [replaySignals, setReplaySignals] = useState<ReplaySignal[]>([]);
   const [replayDate, setReplayDate] = useState<string | null>(null);
   const [isReplayActive, setIsReplayActive] = useState(false);
@@ -54,14 +54,14 @@ export function ReplayResultsPanel() {
   });
 
   useEffect(() => {
-    if (!user?.uid) return;
+    if (!firebaseUser?.uid) return;
 
     // Listen to bot config to check if replay mode is active
     const configUnsubscribe = onSnapshot(
-      collection(db, 'bot_configs').doc(user.uid),
-      (doc) => {
-        if (doc.exists()) {
-          const data = doc.data();
+      doc(db, 'bot_configs', firebaseUser.uid),
+      (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
           setIsReplayActive(data.replay_mode === true);
           setReplayDate(data.replay_date || null);
         }
@@ -71,7 +71,7 @@ export function ReplayResultsPanel() {
     // Listen to replay signals
     const signalsQuery = query(
       collection(db, 'signals'),
-      where('userId', '==', user.uid),
+      where('userId', '==', firebaseUser.uid),
       where('replay_mode', '==', true),
       orderBy('timestamp', 'desc')
     );
@@ -106,7 +106,7 @@ export function ReplayResultsPanel() {
       configUnsubscribe();
       signalsUnsubscribe();
     };
-  }, [user?.uid]);
+  }, [firebaseUser?.uid]);
 
   const calculateStats = (signals: ReplaySignal[]) => {
     const totalSignals = signals.length;

@@ -3,9 +3,9 @@ staticDirectory: .next
 
 # Angel One Smart API integration - NEW LOGIN (single Trading API)
 env:
-  # Backend Service URL (Cloud Run)
+  # Backend Service URL (Cloud Run) - UPDATED to current URL
   - variable: BACKEND_URL
-    value: https://trading-bot-service-vmxfbt7qiq-el.a.run.app
+    value: https://trading-bot-service-818546654122.asia-south1.run.app
   
   # Trading API Credentials (NEW LOGIN - replaces old multi-API system)
   - variable: ANGELONE_TRADING_API_KEY
@@ -41,3 +41,6 @@ env:
   - variable: NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID
     secret: NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID
 
+  # Backend URL for client-side access
+  - variable: NEXT_PUBLIC_BACKEND_URL
+    value: https://trading-bot-service-818546654122.asia-south1.run.app

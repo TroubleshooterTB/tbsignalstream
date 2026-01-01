@@ -1,20 +1,20 @@
 /**
  * Environment variable validation and type-safe access
- * Validates all required environment variables at startup
+ * Client-safe implementation - only validates on server side
  */
 
+const isServer = typeof window === 'undefined';
+
 function getEnvVar(key: string, required: boolean = true): string {
-  // In client-side, only NEXT_PUBLIC_ vars are available
-  const value = typeof window === 'undefined' 
-    ? process.env[key] 
-    : (window as any).ENV?.[key] || process.env[key];
+  // On client, only NEXT_PUBLIC_ prefixed vars are available
+  const value = process.env[key];
   
   if (required && !value) {
-    // Only throw during build/server-side, not on client
-    if (typeof window === 'undefined') {
+    // Only throw during server-side/build time
+    if (isServer) {
       throw new Error(`Missing required environment variable: ${key}`);
     }
-    console.warn(`Missing environment variable: ${key}`);
+    // Silently return empty string on client to prevent crashes
     return '';
   }
   
@@ -22,11 +22,17 @@ function getEnvVar(key: string, required: boolean = true): string {
 }
 
 function validateUrl(url: string, name: string): string {
+  if (!url) return '';
+  
   try {
     new URL(url);
     return url;
   } catch {
-    throw new Error(`Invalid URL for ${name}: ${url}`);
+    if (isServer) {
+      throw new Error(`Invalid URL for ${name}: ${url}`);
+    }
+    console.warn(`Invalid URL for ${name}: ${url}`);
+    return url; // Return as-is on client, don't crash
   }
 }
 
@@ -60,8 +66,8 @@ export const env = {
   sentryDsn: getEnvVar('NEXT_PUBLIC_SENTRY_DSN', false),
 } as const;
 
-// Validate on import (fail fast)
-if (typeof window === 'undefined') {
+// Validate on import (server-side only, fail fast during build)
+if (isServer) {
   console.log('✅ Environment variables validated successfully');
   console.log(`   Environment: ${env.nodeEnv}`);
   console.log(`   Firebase Project: ${env.firebase.projectId}`);

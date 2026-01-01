@@ -2,6 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import { AlertCircle, CheckCircle, XCircle, AlertTriangle } from 'lucide-react';
+import { env } from '@/config/env';
+import { TIMEOUTS } from '@/config/constants';
+import { fetchWithTimeout } from '@/lib/fetch-with-timeout';
 
 interface SystemError {
   type: string;
@@ -27,8 +30,11 @@ export default function SystemHealthMonitor() {
   useEffect(() => {
     const checkSystemHealth = async () => {
       try {
-        const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || process.env.BACKEND_URL;
-        const response = await fetch(`${backendUrl}/system-status`);
+        const response = await fetchWithTimeout(
+          `${env.backendUrl}/health`,
+          {},
+          TIMEOUTS.HEALTH_CHECK
+        );
         const data = await response.json();
         setStatus(data);
         setIsLoading(false);
@@ -56,7 +62,7 @@ export default function SystemHealthMonitor() {
     checkSystemHealth();
 
     // Check every 30 seconds
-    const interval = setInterval(checkSystemHealth, 30000);
+    const interval = setInterval(checkSystemHealth, TIMEOUTS.HEALTH_CHECK);
 
     return () => clearInterval(interval);
   }, []);

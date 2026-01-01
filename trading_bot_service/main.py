@@ -1089,6 +1089,87 @@ def export_backtest_pdf():
         return jsonify({'error': str(e)}), 500
 
 
+# ============================================================================
+# HEALTH CHECK ENDPOINTS (for Cloud Run, Kubernetes, monitoring)
+# ============================================================================
+
+@app.route('/health', methods=['GET'])
+def health_check():
+    """
+    Liveness probe - Is the service alive?
+    Used by Cloud Run/Kubernetes to restart unhealthy containers
+    
+    Returns 200 if service is running, 503 if critical issues detected
+    """
+    health_status = {
+        'status': 'healthy',
+        'timestamp': datetime.now().isoformat(),
+        'service': 'trading-bot-service',
+        'checks': {
+            'firestore': db is not None,
+            'active_bots': len(active_bots),
+        }
+    }
+    
+    # If Firestore is down, service is unhealthy
+    if db is None:
+        health_status['status'] = 'unhealthy'
+        health_status['error'] = firestore_error or 'Firestore not initialized'
+        return jsonify(health_status), 503
+    
+    return jsonify(health_status), 200
+
+
+@app.route('/readiness', methods=['GET'])
+def readiness_check():
+    """
+    Readiness probe - Is the service ready to handle requests?
+    Used by load balancers to route traffic
+    
+    Returns 200 when ready, 503 when not ready
+    """
+    if db is None:
+        return jsonify({
+            'status': 'not_ready',
+            'reason': 'Firestore not initialized',
+            'timestamp': datetime.now().isoformat()
+        }), 503
+    
+    return jsonify({
+        'status': 'ready',
+        'timestamp': datetime.now().isoformat(),
+        'active_bots': len(active_bots)
+    }), 200
+
+
+@app.route('/status', methods=['GET'])
+def service_status():
+    """
+    Detailed service status for monitoring/debugging
+    Not used for health checks - returns 200 even with issues
+    """
+    status = {
+        'service': 'trading-bot-service',
+        'version': '1.0.0',
+        'timestamp': datetime.now().isoformat(),
+        'uptime_seconds': None,  # Could track this with start time
+        'firestore': {
+            'connected': db is not None,
+            'error': firestore_error
+        },
+        'bots': {
+            'active_count': len(active_bots),
+            'active_users': list(active_bots.keys())
+        },
+        'environment': {
+            'api_key_configured': bool(ANGEL_ONE_API_KEY),
+            'port': int(os.environ.get('PORT', 8080)),
+        }
+    }
+    
+    return jsonify(status), 200
+
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
     app.run(host='0.0.0.0', port=port, threaded=True)

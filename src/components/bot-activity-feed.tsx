@@ -18,7 +18,9 @@ import {
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/context/auth-context";
 import { db } from "@/lib/firebase";
-import { collection, query, where, orderBy, limit, onSnapshot, Timestamp } from "firebase/firestore";
+import { collection, query, where, orderBy, limit, Timestamp } from "firebase/firestore";
+import { useFirestoreListener } from "@/hooks/use-firestore-listener";
+import { COLLECTIONS, UI } from "@/config/constants";
 
 type ActivityType = 
   | "scan_cycle_start"
@@ -154,75 +156,51 @@ export function BotActivityFeed() {
     }
   }, [activities, isLive]);
 
-  // Real-time listener for bot activity from Firestore
-  useEffect(() => {
-    if (!firebaseUser) {
-      console.log('[BotActivity] No user logged in');
-      return;
-    }
-
-    console.log('[BotActivity] Setting up Firestore listener...');
-
-    const activitiesQuery = query(
-      collection(db, 'bot_activity'),
-      where('user_id', '==', firebaseUser.uid),
+  // Real-time listener for bot activity using custom hook
+  useFirestoreListener<BotActivity>(
+    COLLECTIONS.BOT_ACTIVITY,
+    [
+      where('user_id', '==', firebaseUser?.uid || ''),
       orderBy('timestamp', 'desc'),
-      limit(50) // Last 50 activities
-    );
-
-    const unsubscribe = onSnapshot(
-      activitiesQuery, 
-      (snapshot) => {
-        console.log(`[BotActivity] Received ${snapshot.docs.length} activities, ${snapshot.docChanges().length} changes`);
+      limit(UI.MAX_ACTIVITY_ITEMS)
+    ],
+    (fetchedActivities) => {
+      console.log(`[BotActivity] Received ${fetchedActivities.length} activities`);
+      
+      // Process new activities
+      fetchedActivities.forEach(activity => {
+        // Convert Firestore timestamp to Date
+        const timestamp = (activity.timestamp as any) instanceof Timestamp 
+          ? (activity.timestamp as any).toDate() 
+          : new Date();
         
-        snapshot.docChanges().forEach((change) => {
-        if (change.type === 'added') {
-          const data = change.doc.data();
-          
-          // Convert Firestore timestamp to Date
-          const timestamp = data.timestamp instanceof Timestamp 
-            ? data.timestamp.toDate() 
-            : new Date();
-          
-          const activity: BotActivity = {
-            id: change.doc.id,
-            timestamp,
-            type: data.type as ActivityType,
-            symbol: data.symbol,
-            pattern: data.pattern,
-            confidence: data.confidence,
-            rr_ratio: data.rr_ratio,
-            reason: data.reason,
-            level: data.level,
-            details: data.details || {}
-          };
-          
-          setActivities(prev => {
-            // Prevent duplicates
-            if (prev.some(a => a.id === activity.id)) return prev;
-            return [activity, ...prev].slice(0, 50);
-          });
-          
-          // Update stats
-          setStats(prev => {
-            const newStats = { ...prev };
-            if (data.type === 'pattern_detected') newStats.patterns_detected++;
-            if (data.type === 'screening_passed') newStats.screenings_passed++;
-            if (data.type === 'screening_failed') newStats.screenings_failed++;
-            if (data.type === 'signal_generated') newStats.signals_generated++;
-            return newStats;
-          });
-        }
+        const processedActivity: BotActivity = {
+          ...activity,
+          timestamp,
+        };
+        
+        setActivities(prev => {
+          // Prevent duplicates
+          if (prev.some(a => a.id === processedActivity.id)) return prev;
+          return [processedActivity, ...prev].slice(0, UI.MAX_ACTIVITY_ITEMS);
+        });
+        
+        // Update stats
+        setStats(prev => {
+          const newStats = { ...prev };
+          if (activity.type === 'pattern_detected') newStats.patterns_detected++;
+          if (activity.type === 'screening_passed') newStats.screenings_passed++;
+          if (activity.type === 'screening_failed') newStats.screenings_failed++;
+          if (activity.type === 'signal_generated') newStats.signals_generated++;
+          return newStats;
+        });
       });
-    }, (error) => {
-      console.error('[BotActivity] Firestore listener error:', error);
-    });
-
-    return () => {
-      console.log('[BotActivity] Cleaning up Firestore listener');
-      unsubscribe();
-    };
-  }, [firebaseUser]);
+    },
+    { 
+      enabled: !!firebaseUser,
+      errorMessage: '[BotActivity]'
+    }
+  );
 
   const formatTime = (date: Date) => {
     return date.toLocaleTimeString('en-IN', { 

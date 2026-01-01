@@ -32,13 +32,13 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Initialize Firebase Admin with ADC (Application Default Credentials)
-# On Cloud Run, this automatically uses the service account
+# Initialize Firebase Admin with Workload Identity (ADC)
+# Cloud Run automatically provides credentials via its service account
 db = None
 firestore_error = None
 
 def initialize_firestore():
-    """Initialize Firestore client with proper error handling"""
+    """Initialize Firestore client with Workload Identity support"""
     global db, firestore_error
     
     if db is not None:
@@ -46,19 +46,13 @@ def initialize_firestore():
     
     try:
         if not firebase_admin._apps:
-            # Try with explicit credentials first (for local dev with key file)
-            cred_path = os.path.join(os.path.dirname(__file__), 'firestore-key.json')
-            if os.path.exists(cred_path):
-                cred = credentials.Certificate(cred_path)
-                firebase_admin.initialize_app(cred)
-                logger.info("✅ Firebase initialized with service account key")
-            else:
-                # Use Application Default Credentials (Cloud Run, Cloud Functions)
-                firebase_admin.initialize_app()
-                logger.info("✅ Firebase initialized with ADC")
+            # Use Application Default Credentials (works on Cloud Run, local with gcloud auth)
+            # No need for explicit key file - Cloud Run provides credentials automatically
+            firebase_admin.initialize_app()
+            logger.info("✅ Firebase initialized with Application Default Credentials (Workload Identity)")
         
         db = firestore.client()
-        logger.info("✅ Firestore client initialized")
+        logger.info("✅ Firestore client initialized successfully")
         firestore_error = None
         return db
         
@@ -66,10 +60,10 @@ def initialize_firestore():
         error_msg = f"Failed to initialize Firestore: {str(e)}"
         logger.error(f"❌ {error_msg}")
         firestore_error = error_msg
-        # Don't raise - let the app start so we can report the error
+        # Don't raise - let the app start so we can report the error via health endpoints
         return None
 
-# Try to initialize Firestore at startup
+# Initialize Firestore at startup
 initialize_firestore()
 
 # Load Angel One API key from environment (check multiple possible names)

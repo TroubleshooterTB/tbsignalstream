@@ -4,10 +4,18 @@
  */
 
 function getEnvVar(key: string, required: boolean = true): string {
-  const value = process.env[key];
+  // In client-side, only NEXT_PUBLIC_ vars are available
+  const value = typeof window === 'undefined' 
+    ? process.env[key] 
+    : (window as any).ENV?.[key] || process.env[key];
   
   if (required && !value) {
-    throw new Error(`Missing required environment variable: ${key}`);
+    // Only throw during build/server-side, not on client
+    if (typeof window === 'undefined') {
+      throw new Error(`Missing required environment variable: ${key}`);
+    }
+    console.warn(`Missing environment variable: ${key}`);
+    return '';
   }
   
   return value || '';

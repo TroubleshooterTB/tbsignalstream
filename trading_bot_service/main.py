@@ -189,23 +189,6 @@ class TradingBotInstance:
                 logger.error(f"Failed to update error status: {firestore_err}")
 
 
-@app.route('/health', methods=['GET'])
-def health_check():
-    """Health check endpoint with initialization status"""
-    global firestore_error
-    
-    status = {
-        'status': 'healthy' if firestore_error is None else 'degraded',
-        'active_bots': len(active_bots)
-    }
-    
-    if firestore_error:
-        status['firestore_error'] = firestore_error
-        status['warning'] = 'Firestore not available - bot operations disabled'
-    
-    return jsonify(status), 200 if firestore_error is None else 503
-
-
 @app.route('/system-status', methods=['GET'])
 def system_status():
     """System status endpoint for dashboard error reporting"""

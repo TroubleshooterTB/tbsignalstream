@@ -2171,6 +2171,9 @@ class RealtimeBotEngine:
             logger.info(f"  Trades: {total_trades} (W: {win_count}, L: {loss_count})")
             logger.info(f"  Win Rate: {win_rate:.1f}%")
             logger.info(f"  Mode: {self.trading_mode.upper()}")
+            
+        except Exception as e:
+            logger.error(f"Failed to calculate daily P&L: {e}", exc_info=True)
     
     def _run_replay_simulation(self, running_flag: Callable[[], bool]):
         """

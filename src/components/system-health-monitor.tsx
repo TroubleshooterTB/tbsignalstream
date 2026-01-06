@@ -35,8 +35,34 @@ export default function SystemHealthMonitor() {
           {},
           TIMEOUTS.HEALTH_CHECK
         );
+        
+        if (!response.ok) {
+          throw new Error(`Backend health check failed: ${response.status}`);
+        }
+        
         const data = await response.json();
-        setStatus(data);
+        
+        // Transform backend response to expected format
+        const transformedStatus: SystemStatus = {
+          timestamp: data.timestamp || new Date().toISOString(),
+          backend_operational: data.status === 'healthy',
+          firestore_connected: data.checks?.firestore === true,
+          errors: [],
+          warnings: []
+        };
+        
+        // Add errors if backend is unhealthy
+        if (data.status === 'unhealthy' || !data.checks?.firestore) {
+          transformedStatus.errors.push({
+            type: 'BACKEND_UNHEALTHY',
+            severity: 'CRITICAL',
+            message: data.error || 'Backend service is unhealthy',
+            impact: 'Trading operations may be affected',
+            resolution: 'Check backend logs for details'
+          });
+        }
+        
+        setStatus(transformedStatus);
         setIsLoading(false);
       } catch (error) {
         console.error('Failed to check system health:', error);

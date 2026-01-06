@@ -41,6 +41,9 @@ export function ReplayResultsPanel() {
   const [replaySignals, setReplaySignals] = useState<ReplaySignal[]>([]);
   const [replayDate, setReplayDate] = useState<string | null>(null);
   const [isReplayActive, setIsReplayActive] = useState(false);
+  const [replayProgress, setReplayProgress] = useState(0);
+  const [replayTotal, setReplayTotal] = useState(0);
+  const [replayStatus, setReplayStatus] = useState<string>('idle');
   const [stats, setStats] = useState<ReplayStats>({
     totalSignals: 0,
     winners: 0,
@@ -64,6 +67,9 @@ export function ReplayResultsPanel() {
           const data = docSnap.data();
           setIsReplayActive(data.replay_mode === true);
           setReplayDate(data.replay_date || null);
+          setReplayProgress(data.replay_progress || 0);
+          setReplayTotal(data.replay_total || 0);
+          setReplayStatus(data.replay_status || 'idle');
         }
       },
       (error) => {
@@ -224,8 +230,43 @@ export function ReplayResultsPanel() {
           {replaySignals.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               <AlertCircle className="h-12 w-12 mx-auto mb-2 opacity-50" />
-              <p>No signals generated yet in replay mode</p>
-              <p className="text-sm mt-1">Bot is analyzing historical data...</p>
+              {replayStatus === 'running' ? (
+                <>
+                  <p className="font-semibold">Replay simulation in progress...</p>
+                  <p className="text-sm mt-1">Analyzing historical data for {replayDate}</p>
+                  {replayTotal > 0 && (
+                    <>
+                      <div className="mt-4 max-w-md mx-auto">
+                        <div className="flex justify-between text-xs mb-1">
+                          <span>Progress: {replayProgress} / {replayTotal}</span>
+                          <span>{Math.round((replayProgress / replayTotal) * 100)}%</span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div 
+                            className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                            style={{ width: `${Math.min((replayProgress / replayTotal) * 100, 100)}%` }}
+                          />
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </>
+              ) : replayStatus === 'completed' ? (
+                <>
+                  <p>Replay simulation completed</p>
+                  <p className="text-sm mt-1">No signals were generated</p>
+                </>
+              ) : replayStatus === 'failed' ? (
+                <>
+                  <p className="text-red-600">Replay simulation failed</p>
+                  <p className="text-sm mt-1">Check bot logs for details</p>
+                </>
+              ) : (
+                <>
+                  <p>No signals generated yet in replay mode</p>
+                  <p className="text-sm mt-1">Bot is analyzing historical data...</p>
+                </>
+              )}
             </div>
           ) : (
             <div className="space-y-2 max-h-96 overflow-y-auto">

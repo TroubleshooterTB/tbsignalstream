@@ -119,6 +119,14 @@ class RealtimeBotEngine:
         try:
             self.is_running = True
             
+            # 🔄 REPLAY MODE: Use simulation instead of real-time trading
+            if self.is_replay_mode:
+                logger.info("="*80)
+                logger.info(f"🔄 Starting REPLAY MODE simulation for {self.replay_date}")
+                logger.info("="*80)
+                self._run_replay_simulation(running_flag)
+                return
+            
             # Step 1: Initialize symbol tokens (parallel fetch) - WITH ERROR HANDLING
             logger.info("Fetching symbol tokens...")
             try:
@@ -2163,6 +2171,274 @@ class RealtimeBotEngine:
             logger.info(f"  Trades: {total_trades} (W: {win_count}, L: {loss_count})")
             logger.info(f"  Win Rate: {win_rate:.1f}%")
             logger.info(f"  Mode: {self.trading_mode.upper()}")
+    
+    def _run_replay_simulation(self, running_flag: Callable[[], bool]):
+        """
+        Run replay mode simulation - simulate trading for a historical date
+        Fetches historical data and processes it as if trading in real-time
+        """
+        try:
+            from datetime import datetime, timedelta
+            import pandas as pd
+            from SmartApi import SmartConnect
+            
+            logger.info(f"🔄 REPLAY MODE: Starting simulation for {self.replay_date}")
+            
+            # Step 1: Initialize managers (without WebSocket)
+            logger.info("🔧 Initializing trading managers for replay...")
+            self._initialize_managers()
+            
+            # Step 2: Initialize SmartAPI client for historical data
+            logger.info("🔌 Initializing SmartAPI client...")
+            smart_api = SmartConnect(api_key=self.api_key)
+            
+            # Step 3: Get symbol tokens
+            logger.info("📋 Fetching symbol tokens...")
+            self.symbol_tokens = self._get_symbol_tokens_parallel()
+            if not self.symbol_tokens:
+                logger.warning("No symbol tokens, using fallback...")
+                self.symbol_tokens = self._get_fallback_tokens()
+            
+            logger.info(f"✅ Got tokens for {len(self.symbol_tokens)} symbols")
+            
+            # Step 4: Parse replay date
+            replay_dt = datetime.strptime(self.replay_date, '%Y-%m-%d')
+            
+            # Step 5: Fetch historical data for each symbol
+            logger.info(f"📊 Fetching historical data for {self.replay_date}...")
+            historical_data = {}
+            
+            for symbol in self.symbols[:10]:  # Limit to 10 symbols for replay to avoid timeout
+                if symbol not in self.symbol_tokens:
+                    logger.warning(f"No token for {symbol}, skipping...")
+                    continue
+                
+                token = self.symbol_tokens[symbol]
+                
+                try:
+                    # Fetch intraday 1-minute candles for the replay date
+                    params = {
+                        "exchange": "NSE",
+                        "symboltoken": token,
+                        "interval": "ONE_MINUTE",
+                        "fromdate": f"{self.replay_date} 09:15",
+                        "todate": f"{self.replay_date} 15:30"
+                    }
+                    
+                    hist_data = smart_api.getCandleData(params)
+                    
+                    if hist_data and hist_data.get('status') and hist_data.get('data'):
+                        candles = hist_data['data']
+                        df = pd.DataFrame(candles, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+                        df['timestamp'] = pd.to_datetime(df['timestamp'])
+                        df = df.set_index('timestamp')
+                        historical_data[symbol] = df
+                        logger.info(f"  ✅ {symbol}: {len(df)} candles")
+                    else:
+                        logger.warning(f"  ⚠️  {symbol}: No data available")
+                        
+                except Exception as e:
+                    logger.error(f"  ❌ {symbol}: Failed to fetch data - {e}")
+                    continue
+                
+                time.sleep(0.1)  # Rate limiting
+            
+            if not historical_data:
+                raise Exception("No historical data fetched - cannot run replay simulation")
+            
+            logger.info(f"✅ Historical data loaded for {len(historical_data)} symbols")
+            
+            # Step 6: Simulate trading session
+            logger.info("🎬 Starting replay simulation...")
+            
+            # Get all unique timestamps across all symbols
+            all_timestamps = set()
+            for df in historical_data.values():
+                all_timestamps.update(df.index)
+            
+            sorted_timestamps = sorted(list(all_timestamps))
+            logger.info(f"📅 Simulating {len(sorted_timestamps)} time points from {sorted_timestamps[0]} to {sorted_timestamps[-1]}")
+            
+            # Update bot config with replay progress
+            if self.db:
+                self.db.collection('bot_configs').document(self.user_id).update({
+                    'replay_progress': 0,
+                    'replay_total': len(sorted_timestamps),
+                    'replay_status': 'running'
+                })
+            
+            signals_generated = 0
+            
+            # Process each timestamp sequentially
+            for idx, timestamp in enumerate(sorted_timestamps):
+                if not running_flag() or not self.is_running:
+                    logger.info("🛑 Replay simulation stopped by user")
+                    break
+                
+                # Update candle data for each symbol at this timestamp
+                for symbol, df in historical_data.items():
+                    if timestamp in df.index:
+                        candle = df.loc[timestamp]
+                        
+                        # Add to candle_data (same format as real-time)
+                        if symbol not in self.candle_data:
+                            self.candle_data[symbol] = pd.DataFrame(columns=['open', 'high', 'low', 'close', 'volume'])
+                        
+                        new_row = pd.DataFrame({
+                            'open': [candle['open']],
+                            'high': [candle['high']],
+                            'low': [candle['low']],
+                            'close': [candle['close']],
+                            'volume': [candle['volume']]
+                        }, index=[timestamp])
+                        
+                        self.candle_data[symbol] = pd.concat([self.candle_data[symbol], new_row])
+                        
+                        # Update latest price
+                        with self._lock:
+                            self.latest_prices[symbol] = float(candle['close'])
+                
+                # Run strategy analysis at this timestamp
+                try:
+                    self._analyze_and_trade()
+                except Exception as e:
+                    logger.error(f"Error during analysis at {timestamp}: {e}")
+                
+                # Update progress every 50 timestamps
+                if idx % 50 == 0:
+                    progress = int((idx / len(sorted_timestamps)) * 100)
+                    logger.info(f"🔄 Replay progress: {progress}% ({idx}/{len(sorted_timestamps)})")
+                    
+                    if self.db:
+                        self.db.collection('bot_configs').document(self.user_id).update({
+                            'replay_progress': idx,
+                            'replay_status': 'running'
+                        })
+                
+                # Small delay to avoid overwhelming Firestore
+                if idx % 10 == 0:
+                    time.sleep(0.01)
+            
+            # Step 7: Close any open positions at end of day
+            logger.info("📴 End of replay session - closing open positions...")
+            with self._lock:
+                open_positions = list(self.open_positions.values())
+            
+            for position in open_positions:
+                try:
+                    exit_price = self.latest_prices.get(position['ticker'], position['entry_price'])
+                    self._close_position_replay(position, exit_price, 'EOD', 'End of replay session')
+                except Exception as e:
+                    logger.error(f"Error closing position {position['ticker']}: {e}")
+            
+            # Step 8: Calculate final statistics
+            logger.info("📊 Calculating replay results...")
+            
+            if self.db:
+                # Get all signals generated during replay
+                signals_ref = self.db.collection('trading_signals').where('user_id', '==', self.user_id).where('replay_date', '==', self.replay_date)
+                signals = [doc.to_dict() for doc in signals_ref.stream()]
+                
+                total_signals = len(signals)
+                buy_signals = len([s for s in signals if s.get('action') == 'BUY'])
+                sell_signals = len([s for s in signals if s.get('action') == 'SELL'])
+                
+                # Calculate P&L
+                total_pnl = sum([s.get('pnl', 0) for s in signals if s.get('pnl')])
+                winning_trades = len([s for s in signals if s.get('pnl', 0) > 0])
+                losing_trades = len([s for s in signals if s.get('pnl', 0) < 0])
+                
+                win_rate = (winning_trades / (winning_trades + losing_trades) * 100) if (winning_trades + losing_trades) > 0 else 0
+                
+                # Store replay results
+                replay_results = {
+                    'user_id': self.user_id,
+                    'replay_date': self.replay_date,
+                    'completed_at': firestore.SERVER_TIMESTAMP,
+                    'total_signals': total_signals,
+                    'buy_signals': buy_signals,
+                    'sell_signals': sell_signals,
+                    'total_pnl': total_pnl,
+                    'winning_trades': winning_trades,
+                    'losing_trades': losing_trades,
+                    'win_rate': win_rate,
+                    'strategy': self.strategy,
+                    'symbols_analyzed': len(historical_data),
+                    'timepoints_processed': len(sorted_timestamps)
+                }
+                
+                self.db.collection('replay_results').document(f"{self.user_id}_{self.replay_date}").set(replay_results)
+                
+                # Update bot config
+                self.db.collection('bot_configs').document(self.user_id).update({
+                    'status': 'stopped',
+                    'replay_progress': len(sorted_timestamps),
+                    'replay_status': 'completed',
+                    'replay_mode': False
+                })
+                
+                logger.info("="*80)
+                logger.info(f"✅ REPLAY SIMULATION COMPLETE for {self.replay_date}")
+                logger.info(f"   Total Signals: {total_signals} (Buy: {buy_signals}, Sell: {sell_signals})")
+                logger.info(f"   Total P&L: ₹{total_pnl:,.2f}")
+                logger.info(f"   Win Rate: {win_rate:.1f}% ({winning_trades}W / {losing_trades}L)")
+                logger.info(f"   Symbols: {len(historical_data)}")
+                logger.info(f"   Timepoints: {len(sorted_timestamps)}")
+                logger.info("="*80)
+            
+            self.is_running = False
+            
+        except Exception as e:
+            logger.error(f"❌ Replay simulation failed: {e}", exc_info=True)
+            if self.db:
+                self.db.collection('bot_configs').document(self.user_id).update({
+                    'status': 'error',
+                    'error_message': f"Replay failed: {str(e)}",
+                    'replay_status': 'failed',
+                    'replay_mode': False
+                })
+            self.is_running = False
+            raise
+    
+    def _close_position_replay(self, position, exit_price, signal_type, rationale):
+        """Close a position during replay mode and record the signal"""
+        ticker = position['ticker']
+        entry_price = position['entry_price']
+        quantity = position['quantity']
+        
+        pnl = (exit_price - entry_price) * quantity
+        pnl_pct = ((exit_price - entry_price) / entry_price) * 100
+        
+        # Create exit signal
+        signal_data = {
+            'user_id': self.user_id,
+            'ticker': ticker,
+            'action': 'SELL',
+            'signal_type': signal_type,
+            'price': exit_price,
+            'quantity': quantity,
+            'confidence': position.get('confidence', 0),
+            'rationale': rationale,
+            'pnl': pnl,
+            'pnl_pct': pnl_pct,
+            'entry_price': entry_price,
+            'exit_price': exit_price,
+            'holding_period_minutes': 0,
+            'strategy': self.strategy,
+            'trading_mode': 'replay',
+            'replay_date': self.replay_date,
+            'timestamp': firestore.SERVER_TIMESTAMP
+        }
+        
+        if self.db:
+            self.db.collection('trading_signals').add(signal_data)
+        
+        # Remove from open positions
+        with self._lock:
+            if ticker in self.open_positions:
+                del self.open_positions[ticker]
+        
+        logger.info(f"   📴 Closed {ticker} @ ₹{exit_price:.2f} | P&L: ₹{pnl:,.2f} ({pnl_pct:+.2f}%)")
             
             return daily_summary
             

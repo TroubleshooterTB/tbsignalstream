@@ -2442,10 +2442,4 @@ class RealtimeBotEngine:
                 del self.open_positions[ticker]
         
         logger.info(f"   📴 Closed {ticker} @ ₹{exit_price:.2f} | P&L: ₹{pnl:,.2f} ({pnl_pct:+.2f}%)")
-            
-            return daily_summary
-            
-        except Exception as e:
-            logger.error(f"Failed to calculate daily P&L: {e}", exc_info=True)
-            return None
 

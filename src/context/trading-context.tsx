@@ -272,7 +272,7 @@ export function TradingProvider({ children }: { children: React.ReactNode }) {
         setIsBotRunning(true);
         toast({
           title: 'Bot Started',
-          description: `Bot is now ${botConfig.mode === 'paper' ? 'paper trading' : 'live trading'} with ${symbols.length} symbols`,
+          description: `Bot is now ${botConfig.mode === 'paper' ? 'paper trading' : 'live trading'} with ${botConfig.symbols?.split(',').length || 0} symbols`,
         });
       }
     } catch (error: any) {

@@ -409,12 +409,14 @@ def start_bot():
             # Update Firestore status
             status_data = {
                 'status': 'running',
+                'is_running': True,  # CRITICAL: Add this flag for frontend bot status check
                 'symbols': symbols,
                 'interval': interval,
                 'mode': mode,
                 'strategy': strategy,
                 'started_at': firestore.SERVER_TIMESTAMP,
-                'updated_at': firestore.SERVER_TIMESTAMP
+                'updated_at': firestore.SERVER_TIMESTAMP,
+                'last_started': firestore.SERVER_TIMESTAMP
             }
             
             if is_replay_mode:
@@ -469,8 +471,10 @@ def stop_bot():
         # Update Firestore status
         db.collection('bot_configs').document(user_id).update({
             'status': 'stopped',
+            'is_running': False,  # CRITICAL: Set to False when bot stops
             'stopped_at': firestore.SERVER_TIMESTAMP,
-            'updated_at': firestore.SERVER_TIMESTAMP
+            'updated_at': firestore.SERVER_TIMESTAMP,
+            'last_stopped': firestore.SERVER_TIMESTAMP
         })
         
         return jsonify({

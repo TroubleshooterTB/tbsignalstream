@@ -72,32 +72,27 @@ class PatternDetector:
         if len(high_peaks) >= 2:
             peak1_idx, peak2_idx = high_peaks[-2], high_peaks[-1]
             
-            # MINIMUM PATTERN DURATION: at least 20 candles between peaks
-            if peak2_idx - peak1_idx < 20:
+            # MINIMUM PATTERN DURATION: at least 10 candles between peaks (relaxed from 20)
+            if peak2_idx - peak1_idx < 10:
                 pass  # Skip this pattern, continue to Double Bottom check
             else:
                 peak1_price, peak2_price = recent_data['High'].iloc[peak1_idx], recent_data['High'].iloc[peak2_idx]
 
-                # TIGHTER TOLERANCE: Peaks must be within 1% (reduced from 3%)
-                if abs(peak1_price - peak2_price) / peak1_price < 0.01:
+                # TIGHTER TOLERANCE: Peaks must be within 2.5% (relaxed from 1% for intraday)
+                if abs(peak1_price - peak2_price) / peak1_price < 0.025:
                     trough_between = recent_data['Low'].iloc[peak1_idx:peak2_idx].min()
                     current_price = data['Close'].iloc[-1]
                     height = peak1_price - trough_between
                     
-                    # PATTERN HEIGHT CHECK: Must be at least 1% (increased from 0.5%)
+                    # PATTERN HEIGHT CHECK: Must be at least 0.6% (relaxed from 1% for intraday)
                     height_pct = (height / peak1_price) * 100
-                    if height_pct < 1.0:
+                    if height_pct < 0.6:
                         pass  # Skip weak pattern
                     else:
-                        # TREND FILTER: Check if in downtrend (price below 20-MA)
-                        if len(data) >= 20:
-                            ma20 = data['Close'].rolling(20).mean().iloc[-1]
-                            if current_price >= ma20:
-                                pass  # Not in downtrend, skip
-                            else:
-                                # CONFIRMED: Strong breakout below support with at least 0.2% confirmation
-                                breakout_distance = (trough_between - current_price) / trough_between
-                                if breakout_distance >= 0.002:
+                        # REMOVED TREND FILTER: Allow patterns at any trend stage
+                        # CONFIRMED: Strong breakout below support with at least 0.1% confirmation
+                        breakout_distance = (trough_between - current_price) / trough_between
+                        if breakout_distance >= 0.001:
                                     return {
                                         'pattern_name': 'Double Top', 'breakout_direction': 'down',
                                         'pattern_status': 'confirmed', 'tradeable': True,
@@ -112,32 +107,27 @@ class PatternDetector:
         if len(low_troughs) >= 2:
             trough1_idx, trough2_idx = low_troughs[-2], low_troughs[-1]
             
-            # MINIMUM PATTERN DURATION: at least 20 candles between troughs
-            if trough2_idx - trough1_idx < 20:
+            # MINIMUM PATTERN DURATION: at least 10 candles between troughs (relaxed from 20)
+            if trough2_idx - trough1_idx < 10:
                 return {}  # Skip weak pattern
             
             trough1_price, trough2_price = recent_data['Low'].iloc[trough1_idx], recent_data['Low'].iloc[trough2_idx]
 
-            # TIGHTER TOLERANCE: Troughs must be within 1% (reduced from 3%)
-            if abs(trough1_price - trough2_price) / trough1_price < 0.01:
+            # TIGHTER TOLERANCE: Troughs must be within 2.5% (relaxed from 1% for intraday)
+            if abs(trough1_price - trough2_price) / trough1_price < 0.025:
                 peak_between = recent_data['High'].iloc[trough1_idx:trough2_idx].max()
                 current_price = data['Close'].iloc[-1]
                 height = peak_between - trough1_price
                 
-                # PATTERN HEIGHT CHECK: Must be at least 1% (increased from 0.5%)
+                # PATTERN HEIGHT CHECK: Must be at least 0.6% (relaxed from 1% for intraday)
                 height_pct = (height / trough1_price) * 100
-                if height_pct < 1.0:
+                if height_pct < 0.6:
                     return {}  # Skip weak pattern
                 
-                # TREND FILTER: Check if in uptrend (price above 20-MA)
-                if len(data) >= 20:
-                    ma20 = data['Close'].rolling(20).mean().iloc[-1]
-                    if current_price <= ma20:
-                        return {}  # Not in uptrend, skip
-                
-                # CONFIRMED: Strong breakout above resistance with at least 0.2% confirmation
+                # REMOVED TREND FILTER: Allow patterns at any trend stage
+                # CONFIRMED: Strong breakout above resistance with at least 0.1% confirmation
                 breakout_distance = (current_price - peak_between) / peak_between
-                if breakout_distance >= 0.002:
+                if breakout_distance >= 0.001:
                     return {
                         'pattern_name': 'Double Bottom', 'breakout_direction': 'up',
                         'pattern_status': 'confirmed', 'tradeable': True,
@@ -162,7 +152,7 @@ class PatternDetector:
         flag_data = data.iloc[-flag_lookback:]
         
         # Bull Flag
-        if price_change > 0 and pole_height / pole_data['Close'].iloc[0] > 0.04: # At least 4% pole move (relaxed from 8%)
+        if price_change > 0 and pole_height / pole_data['Close'].iloc[0] > 0.025: # At least 2.5% pole move (relaxed from 4%)
             highs, lows = self._get_swing_points(flag_data['High'], 3, 0.005)
             if len(highs) > 1:
                 high_coef = np.polyfit(highs, flag_data['High'].iloc[highs], 1)
@@ -178,7 +168,7 @@ class PatternDetector:
                             'pattern_top_boundary': resistance_line, 'pattern_bottom_boundary': flag_data['Low'].min()
                         }
         # Bear Flag
-        if price_change < 0 and pole_height / pole_data['Close'].iloc[0] > 0.04: # At least 4% pole move (relaxed from 8%)
+        if price_change < 0 and pole_height / pole_data['Close'].iloc[0] > 0.025: # At least 2.5% pole move (relaxed from 4%)
             highs, lows = self._get_swing_points(flag_data['Low'], 3, 0.005)
             if len(lows) > 1:
                 low_coef = np.polyfit(lows, flag_data['Low'].iloc[lows], 1)

@@ -860,19 +860,23 @@ class RealtimeBotEngine:
                 if idx < len(self.symbols):  # Don't sleep after last symbol
                     time.sleep(RATE_LIMIT_DELAY)
         
+        # CRITICAL FIX: Bootstrap failure is NOT fatal - bot can still work with live ticks
         if success_count == 0 and now < market_open_time:
             logger.warning("📊 No historical data available - Bot started before market open")
             logger.warning("📊 Bot will accumulate candles from live ticks starting at 9:15 AM")
             logger.warning("📊 Pattern detection will activate once 50+ candles accumulated (~50 minutes)")
-            logger.info("✅ [CRITICAL] Historical candles loaded - bot ready to trade immediately!")
+            logger.info("✅ Bootstrap complete - bot will build candles from live ticks")
         elif success_count > 0:
-            logger.info(f"📈 Historical data bootstrap: {success_count} symbols loaded")
+            logger.info(f"📈 Historical data bootstrap: {success_count} symbols loaded, {fail_count} failed")
             logger.info(f"🎯 Bot ready for immediate signal generation with pre-loaded indicators!")
-            logger.info("✅ [CRITICAL] Historical candles loaded - bot ready to trade immediately!")
+            logger.info("✅ Historical candles loaded - bot ready to trade immediately!")
         else:
             logger.warning(f"⚠️ Historical data bootstrap: 0 success, {fail_count} failed")
             logger.warning("⚠️ Bot will build candles from live ticks (may take 50+ minutes for patterns)")
-            logger.info("✅ [CRITICAL] Historical candles loaded - bot ready to trade immediately!")
+            logger.info("✅ Bootstrap complete - bot will build candles from live ticks")
+        
+        # NEVER raise exception here - allow bot to continue even if bootstrap fails
+        # Bot can still work by accumulating candles from live WebSocket ticks
     
     def _verify_ready_to_trade(self):
         """Final verification before entering trading loop"""
@@ -994,12 +998,17 @@ class RealtimeBotEngine:
             self._ml_logger = MLDataLogger(db_client=None)  # Disabled mode
         
         # NEW: Initialize Bot Activity Logger for real-time dashboard
+        # CRITICAL FIX: Ensure verbose mode is enabled for full visibility
         try:
             from bot_activity_logger import BotActivityLogger
-            self._activity_logger = BotActivityLogger(user_id=self.user_id, db_client=self.db)
-            logger.info("✅ Bot Activity Logger initialized (real-time dashboard feed)")
+            self._activity_logger = BotActivityLogger(
+                user_id=self.user_id, 
+                db_client=self.db,
+                verbose_mode=True  # ALWAYS enable verbose logging for dashboard visibility
+            )
+            logger.info("✅ Bot Activity Logger initialized (verbose mode: ON, real-time dashboard feed)")
         except Exception as e:
-            logger.error(f"Failed to initialize Activity Logger: {e}")
+            logger.error(f"Failed to initialize Activity Logger: {e}", exc_info=True)
             self._activity_logger = None  # Disabled mode
         
         # NEW: Initialize Error Handler (depends on activity logger)
@@ -1065,9 +1074,15 @@ class RealtimeBotEngine:
             logger.debug(f"🔍 [DEBUG] _analyze_and_trade() called - Strategy: {self.strategy}")
             
             # Check if market is open before trading
+            # CRITICAL FIX: Allow paper trading outside market hours for testing
             if not self._is_market_open():
-                logger.debug("⏸️  Market is closed - skipping strategy execution")
-                return
+                if self.trading_mode == 'live':
+                    logger.debug("⏸️  Market is closed - skipping LIVE trading (safety)")
+                    return
+                else:
+                    # Paper mode: Allow trading outside hours for testing and replay mode
+                    logger.debug(f"📝 PAPER MODE: Analyzing outside market hours (testing mode)")
+                    # Continue execution
             
             # Check EOD auto-close (3:15 PM for safety before broker's 3:20 PM)
             self._check_eod_auto_close()

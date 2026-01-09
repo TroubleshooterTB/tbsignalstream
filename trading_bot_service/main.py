@@ -193,9 +193,10 @@ class TradingBotInstance:
 def system_status():
     """System status endpoint for dashboard error reporting"""
     global firestore_error
+    from datetime import datetime, timezone
     
     status = {
-        'timestamp': datetime.now().isoformat(),
+        'timestamp': datetime.now(timezone.utc).isoformat(),
         'backend_operational': True,
         'firestore_connected': db is not None,
         'errors': [],
@@ -308,13 +309,13 @@ def check_credentials():
         
         all_set = all(status == 'SET' for status in credentials_status.values())
         
-        from datetime import datetime
+        from datetime import datetime, timezone
         
         return jsonify({
             'status': 'OK' if all_set else 'INCOMPLETE',
             'credentials': credentials_status,
             'api_key_preview': api_key_preview,
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(timezone.utc).isoformat()
         }), 200
         
     except Exception as e:

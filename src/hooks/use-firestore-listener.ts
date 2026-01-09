@@ -78,7 +78,9 @@ export function useFirestoreListener<T = DocumentData>(
     );
 
     return () => unsubscribe();
-  }, [collectionPath, firebaseUser, enabled, errorMessage, includeId, onData, ...queryConstraints]);
+    // CRITICAL FIX: Remove onData and queryConstraints from dependencies to prevent infinite re-renders
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [collectionPath, enabled, includeId]);
 }
 
 /**
@@ -123,7 +125,9 @@ export function useFirestoreDocListener<T = DocumentData>(
     );
 
     return () => unsubscribe();
-  }, [collectionPath, documentId, enabled, errorMessage, onData]);
+    // CRITICAL FIX: Remove onData from dependencies to prevent infinite re-renders
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [collectionPath, documentId, enabled]);
 }
 
 // Re-export doc for convenience

@@ -766,10 +766,13 @@ class RealtimeBotEngine:
         logger.info("📊 [BOOTSTRAP] Starting historical candle bootstrap...")
         from datetime import datetime, timedelta
         from historical_data_manager import HistoricalDataManager
+        import pytz
         
         # Check if market is open or was open recently
-        now = datetime.now()
-        market_open_time = datetime.strptime(f"{now.year}-{now.month:02d}-{now.day:02d} 09:15:00", "%Y-%m-%d %H:%M:%S")
+        # CRITICAL FIX: Use IST timezone-aware datetime (Cloud Run runs in UTC)
+        ist = pytz.timezone('Asia/Kolkata')
+        now = datetime.now(ist)
+        market_open_time = ist.localize(datetime.strptime(f"{now.year}-{now.month:02d}-{now.day:02d} 09:15:00", "%Y-%m-%d %H:%M:%S"))
         
         if now < market_open_time and now.weekday() < 5:
             logger.warning("⏰ Bot started BEFORE market open (9:15 AM) - Historical data may not be available")

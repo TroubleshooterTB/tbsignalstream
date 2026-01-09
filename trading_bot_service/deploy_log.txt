@@ -1,0 +1,5 @@
+Building using Dockerfile and deploying container to Cloud Run service [trading-bot-service] in project [tbsignalstream] region [asia-south1]
+Building and deploying...
+Validating Service....failed
+Deployment failed
+ERROR: (gcloud.run.deploy) Cannot update environment variable [ANGELONE_TRADING_API_KEY] to string literal because it has already been set with a different type.

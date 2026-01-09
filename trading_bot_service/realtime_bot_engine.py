@@ -80,7 +80,7 @@ class RealtimeBotEngine:
         
         # Real-time data storage (thread-safe)
         self._lock = threading.RLock()
-        self.tick_data = defaultdict(lambda: deque(maxlen=1000))  # Last 1000 ticks per symbol
+        self.tick_data = defaultdict(lambda: deque(maxlen=5000))  # Last 5000 ticks per symbol (prevents data loss during high volume)
         self.candle_data = {}  # Current candle data
         self.latest_prices = {}  # Latest LTP per symbol
         self.symbol_tokens = {}  # Token mapping
@@ -1107,14 +1107,21 @@ class RealtimeBotEngine:
     
     def _check_eod_auto_close(self):
         """
-        Auto-close all positions at 3:15 PM (15:15) for INTRADAY safety.
+        Auto-close all positions at 3:15 PM (15:15) IST for INTRADAY safety.
         Angel One auto-squares off at 3:20 PM, but we close 5 minutes earlier
         to ensure clean exits without broker's forced liquidation.
         """
+        import pytz
         from datetime import datetime
         
-        now = datetime.now()
+        # CRITICAL FIX: Use IST timezone (not system local time)
+        ist = pytz.timezone('Asia/Kolkata')
+        now = datetime.now(ist)
         current_time = now.time()
+        
+        # Only check on weekdays (Mon-Fri)
+        if now.weekday() >= 5:
+            return
         
         # Market closes at 3:30 PM (15:30)
         # Broker auto square-off at 3:20 PM (15:20)
@@ -1122,7 +1129,7 @@ class RealtimeBotEngine:
         eod_close_time = datetime.strptime("15:15:00", "%H:%M:%S").time()
         market_close_time = datetime.strptime("15:30:00", "%H:%M:%S").time()
         
-        # Check if it's EOD time (between 3:15 PM and 3:30 PM)
+        # Check if it's EOD time (between 3:15 PM and 3:30 PM IST)
         if eod_close_time <= current_time <= market_close_time:
             positions = self._position_manager.get_all_positions()
             
@@ -1381,10 +1388,36 @@ class RealtimeBotEngine:
             
             for sig in signals[:available_slots]:
                 try:
-                    # Position sizing
+                    # CRITICAL FIX: Comprehensive position sizing validation
                     risk_per_share = abs(sig['current_price'] - sig['stop_loss'])
-                    max_risk = self._risk_manager.risk_limits.max_position_size_percent * self._risk_manager.portfolio_value
-                    quantity = int(max_risk / risk_per_share) if risk_per_share > 0 else 1
+                    
+                    # VALIDATION #1: Ensure risk_per_share is meaningful
+                    if risk_per_share <= 0:
+                        logger.error(f"❌ [{sig['symbol']}] Invalid risk_per_share: {risk_per_share:.4f} (stop={sig['stop_loss']:.2f}, entry={sig['current_price']:.2f}) - SKIPPING TRADE")
+                        continue
+                    
+                    # VALIDATION #2: Ensure stop_loss is at least 0.2% away from entry (minimum risk)
+                    min_risk_pct = 0.002  # 0.2% minimum
+                    risk_pct = risk_per_share / sig['current_price']
+                    if risk_pct < min_risk_pct:
+                        logger.warning(f"⚠️ [{sig['symbol']}] Stop too tight: {risk_pct*100:.2f}% (need {min_risk_pct*100}%) - SKIPPING TRADE")
+                        continue
+                    
+                    # Use risk manager for proper position sizing
+                    quantity = self._risk_manager.calculate_position_size(
+                        entry_price=sig['current_price'],
+                        stop_loss=sig['stop_loss'],
+                        volatility=0.02  # Default 2% volatility (can enhance with ATR later)
+                    )
+                    
+                    # VALIDATION #3: Ensure quantity is reasonable
+                    if quantity <= 0:
+                        logger.error(f"❌ [{sig['symbol']}] Risk manager returned 0 shares - SKIPPING TRADE")
+                        continue
+                    if quantity > 1000:
+                        logger.warning(f"⚠️ [{sig['symbol']}] Quantity too large: {quantity} shares - capping at 100")
+                        quantity = 100
+                    
                     quantity = max(1, min(quantity, 100))
                     
                     # NEW: Advanced 24-Level Screening (before order placement)
@@ -1508,41 +1541,61 @@ class RealtimeBotEngine:
         """
         Calculate confidence score (0-100) for a trading signal.
         
+        FIXED: Bidirectional logic for longs/shorts, logarithmic volume scaling,
+        no default pattern_score, direction-aware S/R and momentum checks.
+        
         Factors:
-        - Volume strength (20%)
-        - Trend alignment (20%)
-        - Pattern quality (30%)
-        - Support/Resistance proximity (15%)
-        - Momentum indicators (15%)
+        - Volume strength (20%) - Logarithmic scaling
+        - Trend alignment (20%) - Bidirectional (long/short)
+        - Pattern quality (30%) - No default, calculated from duration
+        - Support/Resistance proximity (15%) - Direction-aware
+        - Momentum indicators (15%) - Bidirectional (long/short)
         """
+        import math
+        
         try:
             confidence = 0.0
+            direction = pattern_details.get('breakout_direction', 'up')
             
-            # 1. Volume strength (20 points)
+            # 1. Volume strength (20 points) - LOGARITHMIC SCALING
             if 'volume' in df.columns:
                 avg_volume = df['volume'].tail(20).mean()
                 current_volume = df['volume'].iloc[-1]
                 volume_ratio = current_volume / avg_volume if avg_volume > 0 else 1
-                volume_score = min(20, volume_ratio * 10)  # Max 20 points
+                # Logarithmic: 2x=10pts, 3x=15pts, 5x=20pts
+                volume_score = min(20, math.log(volume_ratio + 1, 2) * 10)
                 confidence += volume_score
             
-            # 2. Trend alignment (20 points)
+            # 2. Trend alignment (20 points) - BIDIRECTIONAL
             if 'sma_50' in df.columns and 'sma_200' in df.columns:
                 sma_50 = df['sma_50'].iloc[-1]
                 sma_200 = df['sma_200'].iloc[-1]
                 price = df['close'].iloc[-1]
                 
-                # Bullish alignment: price > sma_50 > sma_200
-                if price > sma_50 > sma_200:
+                if direction == 'up':  # LONG
+                    if price > sma_50 > sma_200:
+                        confidence += 20
+                    elif price > sma_50:
+                        confidence += 10
+                else:  # SHORT
+                    if price < sma_50 < sma_200:
+                        confidence += 20
+                    elif price < sma_50:
+                        confidence += 10
+            
+            # 3. Pattern quality (30 points) - NO DEFAULT, calculate from duration
+            pattern_score = pattern_details.get('pattern_score', 0.0)  # FIXED: Default to 0
+            if pattern_score > 0:
+                confidence += pattern_score * 30
+            else:
+                # Fallback: Use pattern duration if pattern_score not provided
+                duration = pattern_details.get('duration', 0)
+                if duration >= 15:  # Strong pattern (15+ candles)
                     confidence += 20
-                elif price > sma_50:
+                elif duration >= 10:
                     confidence += 10
             
-            # 3. Pattern quality (30 points)
-            pattern_score = pattern_details.get('pattern_score', 0.5)  # 0-1 scale
-            confidence += pattern_score * 30
-            
-            # 4. Support/Resistance proximity (15 points)
+            # 4. Support/Resistance proximity (15 points) - DIRECTION-AWARE
             support = pattern_details.get('support_level', 0)
             resistance = pattern_details.get('resistance_level', 0)
             price = df['close'].iloc[-1]
@@ -1552,20 +1605,31 @@ class RealtimeBotEngine:
                 distance_from_support = price - support
                 position_in_range = distance_from_support / range_size if range_size > 0 else 0.5
                 
-                # Lower in range = better for longs
-                if position_in_range < 0.3:  # Near support
-                    confidence += 15
-                elif position_in_range < 0.5:
-                    confidence += 10
+                if direction == 'up':  # LONG - reward near support
+                    if position_in_range < 0.3:
+                        confidence += 15
+                    elif position_in_range < 0.5:
+                        confidence += 10
+                else:  # SHORT - reward near resistance
+                    if position_in_range > 0.7:
+                        confidence += 15
+                    elif position_in_range > 0.5:
+                        confidence += 10
             
-            # 5. Momentum indicators (15 points)
+            # 5. Momentum indicators (15 points) - BIDIRECTIONAL
             if 'rsi' in df.columns:
                 rsi = df['rsi'].iloc[-1]
-                # RSI between 50-70 is ideal for longs
-                if 50 <= rsi <= 70:
-                    confidence += 15
-                elif 40 <= rsi <= 80:
-                    confidence += 10
+                
+                if direction == 'up':  # LONG - RSI 50-70
+                    if 50 <= rsi <= 70:
+                        confidence += 15
+                    elif 40 <= rsi <= 80:
+                        confidence += 10
+                else:  # SHORT - RSI 30-50
+                    if 30 <= rsi <= 50:
+                        confidence += 15
+                    elif 20 <= rsi <= 60:
+                        confidence += 10
             
             return min(100, confidence)  # Cap at 100
             

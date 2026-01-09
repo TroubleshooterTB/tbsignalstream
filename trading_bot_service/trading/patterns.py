@@ -93,13 +93,33 @@ class PatternDetector:
                         # CONFIRMED: Strong breakout below support with at least 0.1% confirmation
                         breakout_distance = (trough_between - current_price) / trough_between
                         if breakout_distance >= 0.001:
+                                    # CALCULATE PATTERN SCORE (0.0 - 1.0)
+                                    pattern_score = 0.0
+                                    
+                                    # 1. Peak symmetry (0-0.25): How close are the peaks?
+                                    peak_symmetry = 1 - abs(peak1_price - peak2_price) / peak1_price
+                                    pattern_score += peak_symmetry * 0.25
+                                    
+                                    # 2. Duration score (0-0.25): Longer patterns more reliable
+                                    duration_score = min(1.0, (peak2_idx - peak1_idx) / 30)  # 30 candles = max
+                                    pattern_score += duration_score * 0.25
+                                    
+                                    # 3. Height score (0-0.25): Larger patterns more significant
+                                    height_score = min(1.0, height_pct / 2.0)  # 2% height = max
+                                    pattern_score += height_score * 0.25
+                                    
+                                    # 4. Breakout confirmation (0-0.25): How far past breakout?
+                                    breakout_score = min(1.0, breakout_distance / 0.005)  # 0.5% = max
+                                    pattern_score += breakout_score * 0.25
+                                    
                                     return {
                                         'pattern_name': 'Double Top', 'breakout_direction': 'down',
                                         'pattern_status': 'confirmed', 'tradeable': True,
                                         'breakout_price': trough_between, 'duration': lookback,
                                         'initial_stop_loss': peak2_price,
                                         'calculated_price_target': trough_between - height,
-                                        'pattern_top_boundary': peak1_price, 'pattern_bottom_boundary': trough_between
+                                        'pattern_top_boundary': peak1_price, 'pattern_bottom_boundary': trough_between,
+                                        'pattern_score': pattern_score  # ADDED
                                     }
                         # FORMING patterns removed - only trade confirmed breakouts with trend alignment
         
@@ -128,13 +148,33 @@ class PatternDetector:
                 # CONFIRMED: Strong breakout above resistance with at least 0.1% confirmation
                 breakout_distance = (current_price - peak_between) / peak_between
                 if breakout_distance >= 0.001:
+                    # CALCULATE PATTERN SCORE (0.0 - 1.0)
+                    pattern_score = 0.0
+                    
+                    # 1. Trough symmetry (0-0.25): How close are the troughs?
+                    trough_symmetry = 1 - abs(trough1_price - trough2_price) / trough1_price
+                    pattern_score += trough_symmetry * 0.25
+                    
+                    # 2. Duration score (0-0.25): Longer patterns more reliable
+                    duration_score = min(1.0, (trough2_idx - trough1_idx) / 30)  # 30 candles = max
+                    pattern_score += duration_score * 0.25
+                    
+                    # 3. Height score (0-0.25): Larger patterns more significant
+                    height_score = min(1.0, height_pct / 2.0)  # 2% height = max
+                    pattern_score += height_score * 0.25
+                    
+                    # 4. Breakout confirmation (0-0.25): How far past breakout?
+                    breakout_score = min(1.0, breakout_distance / 0.005)  # 0.5% = max
+                    pattern_score += breakout_score * 0.25
+                    
                     return {
                         'pattern_name': 'Double Bottom', 'breakout_direction': 'up',
                         'pattern_status': 'confirmed', 'tradeable': True,
                         'breakout_price': peak_between, 'duration': lookback,
                         'initial_stop_loss': trough2_price,
                         'calculated_price_target': peak_between + height,
-                        'pattern_top_boundary': peak_between, 'pattern_bottom_boundary': trough1_price
+                        'pattern_top_boundary': peak_between, 'pattern_bottom_boundary': trough1_price,
+                        'pattern_score': pattern_score  # ADDED
                     }
                 # FORMING patterns removed - only trade confirmed breakouts with trend alignment
         return {}
@@ -160,12 +200,21 @@ class PatternDetector:
                 if slope < 0: # Downward consolidation
                     resistance_line = flag_data['High'].iloc[highs[-1]]
                     if data['Close'].iloc[-1] > resistance_line:
+                        # Calculate pattern score
+                        pattern_score = 0.0
+                        pole_pct = pole_height / pole_data['Close'].iloc[0]
+                        pattern_score += min(0.4, pole_pct / 0.05) * 0.4  # Pole strength (40%)
+                        pattern_score += min(0.3, abs(slope) / 0.005) * 0.3  # Flag slope (30%)
+                        breakout_pct = (data['Close'].iloc[-1] - resistance_line) / resistance_line
+                        pattern_score += min(0.3, breakout_pct / 0.005) * 0.3  # Breakout strength (30%)
+                        
                         return {
                             'pattern_name': 'Bull Flag', 'breakout_direction': 'up',
                             'breakout_price': resistance_line, 'duration': flag_lookback,
                             'initial_stop_loss': flag_data['Low'].min(),
                             'calculated_price_target': resistance_line + pole_height,
-                            'pattern_top_boundary': resistance_line, 'pattern_bottom_boundary': flag_data['Low'].min()
+                            'pattern_top_boundary': resistance_line, 'pattern_bottom_boundary': flag_data['Low'].min(),
+                            'pattern_score': pattern_score
                         }
         # Bear Flag
         if price_change < 0 and pole_height / pole_data['Close'].iloc[0] > 0.025: # At least 2.5% pole move (relaxed from 4%)
@@ -176,12 +225,21 @@ class PatternDetector:
                 if slope > 0: # Upward consolidation
                     support_line = flag_data['Low'].iloc[lows[-1]]
                     if data['Close'].iloc[-1] < support_line:
+                        # Calculate pattern score
+                        pattern_score = 0.0
+                        pole_pct = pole_height / pole_data['Close'].iloc[0]
+                        pattern_score += min(0.4, pole_pct / 0.05) * 0.4  # Pole strength (40%)
+                        pattern_score += min(0.3, abs(slope) / 0.005) * 0.3  # Flag slope (30%)
+                        breakout_pct = (support_line - data['Close'].iloc[-1]) / support_line
+                        pattern_score += min(0.3, breakout_pct / 0.005) * 0.3  # Breakout strength (30%)
+                        
                         return {
                             'pattern_name': 'Bear Flag', 'breakout_direction': 'down',
                             'breakout_price': support_line, 'duration': flag_lookback,
                             'initial_stop_loss': flag_data['High'].max(),
                             'calculated_price_target': support_line - pole_height,
-                            'pattern_top_boundary': flag_data['High'].max(), 'pattern_bottom_boundary': support_line
+                            'pattern_top_boundary': flag_data['High'].max(), 'pattern_bottom_boundary': support_line,
+                            'pattern_score': pattern_score
                         }
         return {}
 

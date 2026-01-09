@@ -79,8 +79,8 @@ export function ReplayResultsPanel() {
 
     // Listen to replay signals
     const signalsQuery = query(
-      collection(db, 'signals'),
-      where('userId', '==', firebaseUser.uid),
+      collection(db, 'trading_signals'),
+      where('user_id', '==', firebaseUser.uid),
       where('replay_mode', '==', true),
       orderBy('timestamp', 'desc')
     );

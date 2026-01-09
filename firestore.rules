@@ -44,6 +44,20 @@ service cloud.firestore {
       allow delete: if request.auth != null && resource.data.user_id == request.auth.uid;
     }
     
+    // Signals collection - alternative collection name
+    match /signals/{signalId} {
+      allow read: if request.auth != null && (resource.data.user_id == request.auth.uid || resource.data.userId == request.auth.uid);
+      allow write: if request.auth != null; // Bot can create signals for user
+      allow delete: if request.auth != null && (resource.data.user_id == request.auth.uid || resource.data.userId == request.auth.uid);
+    }
+    
+    // Replay results - replay simulation outcomes
+    match /replay_results/{resultId} {
+      allow read: if request.auth != null && resultId.matches('^' + request.auth.uid + '_.*');
+      allow write: if request.auth != null; // Bot can create results
+      allow delete: if request.auth != null && resultId.matches('^' + request.auth.uid + '_.*');
+    }
+    
     // Bot configurations - per-user settings
     match /bot_configs/{userId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;

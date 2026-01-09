@@ -41,6 +41,7 @@ export function ReplayResultsPanel() {
   const [replaySignals, setReplaySignals] = useState<ReplaySignal[]>([]);
   const [replayDate, setReplayDate] = useState<string | null>(null);
   const [isReplayActive, setIsReplayActive] = useState(false);
+  const [hasEverBeenActive, setHasEverBeenActive] = useState(false); // Track if replay was ever active
   const [replayProgress, setReplayProgress] = useState(0);
   const [replayTotal, setReplayTotal] = useState(0);
   const [replayStatus, setReplayStatus] = useState<string>('idle');
@@ -65,7 +66,11 @@ export function ReplayResultsPanel() {
       (docSnap) => {
         if (docSnap.exists()) {
           const data = docSnap.data();
-          setIsReplayActive(data.replay_mode === true);
+          const replayMode = data.replay_mode === true;
+          setIsReplayActive(replayMode);
+          if (replayMode) {
+            setHasEverBeenActive(true); // Mark that replay was activated
+          }
           setReplayDate(data.replay_date || null);
           setReplayProgress(data.replay_progress || 0);
           setReplayTotal(data.replay_total || 0);
@@ -163,8 +168,10 @@ export function ReplayResultsPanel() {
     });
   };
 
-  if (!isReplayActive && replaySignals.length === 0) {
-    return null; // Don't show if not in replay mode and no replay data
+  // Keep panel visible if replay was ever active OR if there are replay signals
+  // This prevents the panel from disappearing during Firestore index building
+  if (!hasEverBeenActive && replaySignals.length === 0) {
+    return null;
   }
 
   return (

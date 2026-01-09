@@ -47,19 +47,17 @@
       ]
     },
     {
-      "collectionGroup": "backtest_results",
+      "collectionGroup": "trading_signals",
       "queryScope": "COLLECTION",
       "fields": [
         {
-          "fieldPath": "timestamp",
-          "order": "DESCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "replay_results",
-      "queryScope": "COLLECTION",
-      "fields": [
+          "fieldPath": "replay_mode",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "user_id",
+          "order": "ASCENDING"
+        },
         {
           "fieldPath": "timestamp",
           "order": "DESCENDING"

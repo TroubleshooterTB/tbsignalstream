@@ -2195,14 +2195,15 @@ class RealtimeBotEngine:
             logger.info("🔌 Initializing SmartAPI client...")
             smart_api = SmartConnect(api_key=self.api_key)
             
-            # Authenticate with existing JWT token
+            # Authenticate with existing JWT token (set token attributes directly)
             if self.jwt_token:
                 logger.info("🔐 Setting JWT token for SmartAPI...")
-                smart_api.setSessionToken(
-                    sessionToken=self.jwt_token,
-                    feedToken=self.feed_token
-                )
-                logger.info("✅ SmartAPI authenticated")
+                # SmartAPI stores tokens as instance attributes after generateSession
+                # We manually set them since we already have valid tokens
+                smart_api._access_token = self.jwt_token
+                smart_api._refresh_token = self.jwt_token  # Use same token
+                smart_api._feed_token = self.feed_token
+                logger.info("✅ SmartAPI authenticated with existing tokens")
             else:
                 raise Exception("No JWT token available - cannot fetch historical data")
             

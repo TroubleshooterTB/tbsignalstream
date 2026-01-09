@@ -793,3 +793,198 @@ class AlphaEnsembleStrategy:
             'win_rate': win_rate,
             'profit_factor': profit_factor
         }
+    
+    def analyze_symbol(self, df: pd.DataFrame, symbol: str, current_price: float) -> Optional[Dict]:
+        """
+        Real-time symbol analysis for Alpha-Ensemble strategy.
+        
+        Applies multi-layer filtering:
+        - Layer 1: Market regime (skip for realtime - assumes user monitors)
+        - Layer 2: Trend filters (EMA 200, EMA 20)
+        - Layer 3: Execution filters (ADX, RSI, Volume)
+        - Layer 4: Risk management (ATR-based stops, 2.5:1 R:R)
+        
+        Returns:
+            Dict with action (BUY/SELL/HOLD), entry, stop, target, score
+            None if analysis fails or symbol should be skipped
+        """
+        try:
+            # Skip blacklisted symbols
+            if symbol in self.BLACKLISTED_SYMBOLS:
+                return None
+            
+            # Check time filter (if configured)
+            current_time = datetime.now().time()
+            if current_time < self.SESSION_START_TIME or current_time > self.SESSION_END_TIME:
+                return None
+            
+            # Need at least 200 candles for EMA200
+            if len(df) < 200:
+                return None
+            
+            # Calculate all required indicators
+            df_copy = df.copy()
+            
+            # EMAs
+            df_copy['EMA_200'] = ta.trend.EMAIndicator(close=df_copy['close'], window=200).ema_indicator()
+            df_copy['EMA_20'] = ta.trend.EMAIndicator(close=df_copy['close'], window=20).ema_indicator()
+            df_copy['EMA_50'] = ta.trend.EMAIndicator(close=df_copy['close'], window=50).ema_indicator()
+            
+            # ADX
+            adx_indicator = ta.trend.ADXIndicator(high=df_copy['high'], low=df_copy['low'], close=df_copy['close'], window=self.ADX_PERIOD)
+            df_copy['ADX'] = adx_indicator.adx()
+            
+            # RSI
+            df_copy['RSI'] = ta.momentum.RSIIndicator(close=df_copy['close'], window=self.RSI_PERIOD).rsi()
+            
+            # ATR
+            df_copy['ATR'] = ta.volatility.AverageTrueRange(high=df_copy['high'], low=df_copy['low'], close=df_copy['close'], window=self.ATR_PERIOD).average_true_range()
+            
+            # Volume SMA
+            df_copy['Volume_SMA'] = df_copy['volume'].rolling(window=20).mean()
+            
+            # Get latest values
+            latest = df_copy.iloc[-1]
+            prev = df_copy.iloc[-2]
+            
+            ema_200 = latest['EMA_200']
+            ema_20 = latest['EMA_20']
+            ema_50 = latest['EMA_50']
+            adx = latest['ADX']
+            rsi = latest['RSI']
+            atr = latest['ATR']
+            volume = latest['volume']
+            volume_sma = latest['Volume_SMA']
+            
+            # Check for NaN values
+            if pd.isna(ema_200) or pd.isna(ema_20) or pd.isna(adx) or pd.isna(rsi) or pd.isna(atr):
+                return None
+            
+            # ===== LAYER 2: TREND FILTERS =====
+            
+            # Determine trend based on EMA200
+            is_uptrend = current_price > ema_200
+            is_downtrend = current_price < ema_200
+            
+            if not is_uptrend and not is_downtrend:
+                return None  # Price exactly at EMA200, skip
+            
+            # Check EMA alignment (EMA20 > EMA200 for uptrend, EMA20 < EMA200 for downtrend)
+            if is_uptrend and ema_20 < ema_200:
+                return None  # Weak uptrend
+            if is_downtrend and ema_20 > ema_200:
+                return None  # Weak downtrend
+            
+            # Check distance from EMA50 (not too far)
+            distance_from_ema50 = abs(current_price - ema_50) / ema_50 * 100
+            if distance_from_ema50 > self.MAX_DISTANCE_FROM_50EMA:
+                return None  # Too far from EMA50, likely exhausted
+            
+            # ===== LAYER 3: EXECUTION FILTERS =====
+            
+            # ADX: Must show trending market
+            if adx < self.ADX_MIN_TRENDING:
+                return None  # Not trending enough
+            
+            # Volume: Must be above average
+            volume_ratio = volume / volume_sma if volume_sma > 0 else 0
+            if volume_ratio < self.VOLUME_MULTIPLIER:
+                return None  # Insufficient volume
+            
+            # RSI: Check sweet spots
+            if is_uptrend:
+                if rsi < self.RSI_LONG_MIN or rsi > self.RSI_LONG_MAX:
+                    return None  # RSI outside LONG range
+                trade_direction = 'BUY'
+            else:
+                if rsi < self.RSI_SHORT_MIN or rsi > self.RSI_SHORT_MAX:
+                    return None  # RSI outside SHORT range
+                trade_direction = 'SELL'
+            
+            # ATR: Check if volatility is acceptable
+            atr_percent = (atr / current_price) * 100
+            if atr_percent < self.ATR_MIN_PERCENT or atr_percent > self.ATR_MAX_PERCENT:
+                return None  # Volatility outside acceptable range
+            
+            # ===== LAYER 4: RISK MANAGEMENT =====
+            
+            # Calculate stop loss (ATR-based)
+            stop_distance = atr * self.ATR_MULTIPLIER_FOR_SL
+            max_stop_distance = current_price * (self.MAXIMUM_SL_PERCENT / 100)
+            stop_distance = min(stop_distance, max_stop_distance)
+            
+            if trade_direction == 'BUY':
+                entry_price = current_price
+                stop_loss = entry_price - stop_distance
+                target = entry_price + (stop_distance * self.RISK_REWARD_RATIO)
+            else:  # SELL
+                entry_price = current_price
+                stop_loss = entry_price + stop_distance
+                target = entry_price - (stop_distance * self.RISK_REWARD_RATIO)
+            
+            # Calculate confidence score (0-100)
+            score = 50  # Base score
+            
+            # ADX contribution (max +15)
+            if adx > 35:
+                score += 15
+            elif adx > 30:
+                score += 10
+            elif adx > 25:
+                score += 5
+            
+            # Volume contribution (max +15)
+            if volume_ratio > 4.0:
+                score += 15
+            elif volume_ratio > 3.0:
+                score += 10
+            elif volume_ratio > 2.5:
+                score += 5
+            
+            # RSI contribution (max +10)
+            if is_uptrend:
+                if 40 <= rsi <= 60:  # Sweet spot for LONG
+                    score += 10
+                elif 35 <= rsi <= 65:
+                    score += 5
+            else:
+                if 40 <= rsi <= 60:  # Sweet spot for SHORT (inverted)
+                    score += 10
+                elif 35 <= rsi <= 65:
+                    score += 5
+            
+            # EMA alignment contribution (max +10)
+            if is_uptrend:
+                if ema_20 > ema_50 > ema_200:
+                    score += 10
+                elif ema_20 > ema_200:
+                    score += 5
+            else:
+                if ema_20 < ema_50 < ema_200:
+                    score += 10
+                elif ema_20 < ema_200:
+                    score += 5
+            
+            # Cap score at 100
+            score = min(score, 100)
+            
+            # Return signal
+            return {
+                'action': trade_direction,
+                'entry_price': entry_price,
+                'stop_loss': stop_loss,
+                'target': target,
+                'score': score,
+                'indicators': {
+                    'ema_200': ema_200,
+                    'ema_20': ema_20,
+                    'adx': adx,
+                    'rsi': rsi,
+                    'atr': atr,
+                    'volume_ratio': volume_ratio
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"Error analyzing {symbol}: {e}", exc_info=True)
+            return None

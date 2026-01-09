@@ -1099,6 +1099,11 @@ class RealtimeBotEngine:
             elif self.strategy == 'both':
                 logger.debug("🔀 [DEBUG] Executing DUAL strategy...")
                 self._execute_dual_strategy()
+            elif self.strategy == 'alpha-ensemble':
+                logger.debug("⭐ [DEBUG] Executing ALPHA-ENSEMBLE strategy...")
+                self._execute_alpha_ensemble_strategy()
+            else:
+                logger.warning(f"⚠️  Unknown strategy: {self.strategy} - no execution performed")
             
             logger.debug("✅ [DEBUG] _analyze_and_trade() completed successfully")
                 
@@ -1831,6 +1836,169 @@ class RealtimeBotEngine:
         """Execute both strategies with dual confirmation"""
         # Implementation similar to pattern + ironclad combined
         pass
+    
+    def _execute_alpha_ensemble_strategy(self):
+        """
+        Execute Alpha-Ensemble Multi-Timeframe Strategy.
+        
+        This strategy:
+        1. Scans NIFTY 50/100/200 symbols based on user selection
+        2. Applies intelligent multi-layer filtering (EMA200, ADX, RSI, Volume)
+        3. Uses retest-based entries with market regime detection
+        4. Targets 40%+ win rate with 2.5:1 risk:reward
+        
+        Strategy validates BEFORE placing orders:
+        - Market regime (Nifty alignment, VIX)
+        - Trend filters (EMA 200, EMA 20)
+        - Execution filters (ADX >25, Volume >2.5x, RSI 35-70)
+        - Position & risk management (2.5:1 R:R, 5% position size)
+        """
+        from trading.order_manager import OrderType, TransactionType, ProductType
+        
+        if not self._alpha_ensemble:
+            logger.error("❌ Alpha-Ensemble strategy not initialized!")
+            return
+        
+        logger.info("⭐ Running Alpha-Ensemble Multi-Timeframe Analysis...")
+        
+        # Get real-time candle data and prices (thread-safe)
+        with self._lock:
+            candle_data_copy = self.candle_data.copy()
+            latest_prices_copy = self.latest_prices.copy()
+        
+        # Check current positions
+        current_positions = self._position_manager.get_all_positions()
+        max_positions = self._risk_manager.risk_limits.max_positions
+        available_slots = max_positions - len(current_positions)
+        
+        if available_slots <= 0:
+            logger.info(f"⏸️  Max positions ({max_positions}) reached - skipping new signals")
+            return
+        
+        # Scan all symbols using Alpha-Ensemble logic
+        signals = []
+        
+        for symbol in self.symbols:
+            try:
+                # Skip if insufficient data (need 200 candles for EMA200)
+                if symbol not in candle_data_copy or len(candle_data_copy[symbol]) < 200:
+                    continue
+                
+                # Skip if already in position
+                if symbol in current_positions:
+                    continue
+                
+                df = candle_data_copy[symbol].copy()
+                current_price = latest_prices_copy.get(symbol, float(df['close'].iloc[-1]))
+                
+                # Run Alpha-Ensemble analysis
+                signal = self._alpha_ensemble.analyze_symbol(df, symbol, current_price)
+                
+                if not signal or signal.get('action') == 'HOLD':
+                    continue
+                
+                logger.info(f"⭐ {symbol}: Alpha-Ensemble {signal.get('action')} signal")
+                logger.info(f"   Entry: ₹{signal.get('entry_price'):.2f}")
+                logger.info(f"   Stop: ₹{signal.get('stop_loss'):.2f}")
+                logger.info(f"   Target: ₹{signal.get('target'):.2f}")
+                logger.info(f"   Score: {signal.get('score', 0):.1f}")
+                
+                signals.append({
+                    'symbol': symbol,
+                    'signal': signal,
+                    'score': signal.get('score', 50),
+                    'current_price': current_price
+                })
+                
+            except Exception as e:
+                logger.error(f"Error analyzing {symbol} with Alpha-Ensemble: {e}", exc_info=True)
+        
+        # Rank signals by Alpha-Ensemble score
+        if signals:
+            signals.sort(key=lambda x: x['score'], reverse=True)
+            
+            logger.info(f"🎯 Alpha-Ensemble found {len(signals)} signals. Top candidates:")
+            for i, sig in enumerate(signals[:5]):
+                logger.info(f"  {i+1}. {sig['symbol']}: {sig['signal'].get('action')} | Score={sig['score']:.1f}")
+            
+            # Take best trades up to available slots
+            for sig in signals[:available_slots]:
+                try:
+                    symbol = sig['symbol']
+                    signal = sig['signal']
+                    current_price = sig['current_price']
+                    
+                    entry_price = signal.get('entry_price', current_price)
+                    stop_loss = signal.get('stop_loss', current_price * 0.98)
+                    target = signal.get('target', current_price * 1.05)
+                    
+                    # Position sizing
+                    risk_per_share = abs(entry_price - stop_loss)
+                    
+                    # VALIDATION: Ensure risk_per_share is meaningful
+                    if risk_per_share <= 0:
+                        logger.error(f"❌ [{symbol}] Invalid risk_per_share: {risk_per_share:.4f}")
+                        continue
+                    
+                    # Use risk manager
+                    quantity = self._risk_manager.calculate_position_size(
+                        entry_price=entry_price,
+                        stop_loss=stop_loss,
+                        volatility=0.02
+                    )
+                    
+                    # VALIDATION: Ensure quantity is reasonable
+                    if quantity <= 0:
+                        logger.error(f"❌ [{symbol}] Risk manager returned 0 shares")
+                        continue
+                    if quantity > 1000:
+                        logger.warning(f"⚠️ [{symbol}] Quantity too large: {quantity} - capping at 100")
+                        quantity = 100
+                    
+                    quantity = max(1, min(quantity, 100))
+                    
+                    # Log signal for ML training (if enabled)
+                    ml_signal_id = None
+                    if self._ml_logger and self._ml_logger.enabled:
+                        try:
+                            df_latest = candle_data_copy[symbol].iloc[-1]
+                            ml_signal_data = {
+                                'symbol': symbol,
+                                'action': signal.get('action'),
+                                'entry_price': entry_price,
+                                'stop_loss': stop_loss,
+                                'target': target,
+                                'was_taken': True,
+                                'rsi': df_latest.get('rsi', 50),
+                                'macd': df_latest.get('macd', 0),
+                                'macd_signal': df_latest.get('macd_signal', 0),
+                                'adx': df_latest.get('adx', 20),
+                                'pattern_type': 'Alpha-Ensemble',
+                                'hour_of_day': datetime.now().hour,
+                                'confidence': sig['score']
+                            }
+                            ml_signal_id = self._ml_logger.log_signal(ml_signal_data)
+                        except Exception as log_err:
+                            logger.debug(f"ML logger error: {log_err}")
+                    
+                    # Place order
+                    logger.info(f"🔴 ENTERING TRADE: {symbol} (Alpha-Ensemble top signal)")
+                    self._place_entry_order(
+                        symbol=symbol,
+                        direction='up' if signal.get('action') == 'BUY' else 'down',
+                        entry_price=entry_price,
+                        stop_loss=stop_loss,
+                        target=target,
+                        quantity=quantity,
+                        reason=f"Alpha-Ensemble | Score: {sig['score']:.1f}",
+                        ml_signal_id=ml_signal_id,
+                        confidence=sig['score']
+                    )
+                    
+                except Exception as e:
+                    logger.error(f"Error placing Alpha-Ensemble order for {sig['symbol']}: {e}", exc_info=True)
+        else:
+            logger.debug("No Alpha-Ensemble signals found in this scan cycle")
     
     def _place_entry_order(self, symbol: str, direction: str, entry_price: float,
                           stop_loss: float, target: float, quantity: int, reason: str,

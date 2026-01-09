@@ -2191,9 +2191,20 @@ class RealtimeBotEngine:
             logger.info("🔧 Initializing trading managers for replay...")
             self._initialize_managers()
             
-            # Step 2: Initialize SmartAPI client for historical data
+            # Step 2: Initialize and authenticate SmartAPI client
             logger.info("🔌 Initializing SmartAPI client...")
             smart_api = SmartConnect(api_key=self.api_key)
+            
+            # Authenticate with existing JWT token
+            if self.jwt_token:
+                logger.info("🔐 Setting JWT token for SmartAPI...")
+                smart_api.setSessionToken(
+                    sessionToken=self.jwt_token,
+                    feedToken=self.feed_token
+                )
+                logger.info("✅ SmartAPI authenticated")
+            else:
+                raise Exception("No JWT token available - cannot fetch historical data")
             
             # Step 3: Get symbol tokens
             logger.info("📋 Fetching symbol tokens...")
@@ -2228,7 +2239,9 @@ class RealtimeBotEngine:
                         "todate": f"{self.replay_date} 15:30"
                     }
                     
+                    logger.debug(f"  Fetching {symbol} with params: {params}")
                     hist_data = smart_api.getCandleData(params)
+                    logger.debug(f"  API response for {symbol}: status={hist_data.get('status') if hist_data else None}, has_data={bool(hist_data.get('data')) if hist_data else False}")
                     
                     if hist_data and hist_data.get('status') and hist_data.get('data'):
                         candles = hist_data['data']
@@ -2238,10 +2251,11 @@ class RealtimeBotEngine:
                         historical_data[symbol] = df
                         logger.info(f"  ✅ {symbol}: {len(df)} candles")
                     else:
-                        logger.warning(f"  ⚠️  {symbol}: No data available")
+                        error_msg = hist_data.get('message') if hist_data else 'No response'
+                        logger.warning(f"  ⚠️  {symbol}: No data - {error_msg}")
                         
                 except Exception as e:
-                    logger.error(f"  ❌ {symbol}: Failed to fetch data - {e}")
+                    logger.error(f"  ❌ {symbol}: Failed to fetch data - {e}", exc_info=True)
                     continue
                 
                 time.sleep(0.1)  # Rate limiting

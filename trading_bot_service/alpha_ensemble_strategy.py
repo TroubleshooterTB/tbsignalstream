@@ -12,6 +12,7 @@ import requests
 import time as time_module
 from typing import List, Dict, Tuple, Optional
 import ta
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -143,6 +144,77 @@ class AlphaEnsembleStrategy:
         except Exception as e:
             logger.error(f"Error fetching data for {symbol}: {e}")
             return pd.DataFrame()
+    
+    def fetch_symbol_data_parallel(self, symbol_info: Dict, start_date: str, end_date: str) -> Optional[Dict]:
+        """Fetch all required data for a symbol in parallel"""
+        symbol = symbol_info['symbol']
+        token = symbol_info['token']
+        
+        # Skip blacklisted symbols
+        if symbol in self.BLACKLISTED_SYMBOLS:
+            logger.info(f"⚠️ {symbol} BLACKLISTED - skipping")
+            return None
+        
+        try:
+            # Fetch 15-minute data for 200 EMA
+            ema_start_date = (datetime.strptime(start_date, "%Y-%m-%d") - timedelta(days=60)).strftime("%Y-%m-%d")
+            data_15m = self.fetch_historical_data(
+                symbol, token, "FIFTEEN_MINUTE",
+                ema_start_date + " 09:15", end_date + " 15:30"
+            )
+            
+            if data_15m.empty:
+                logger.warning(f"⚠️ No 15-minute data for {symbol}")
+                return None
+            
+            # Calculate 200 EMA on 15-minute chart
+            data_15m = self.calculate_ema(data_15m, [200])
+            if data_15m is None:
+                logger.warning(f"⚠️ {symbol} - insufficient 15-min data for EMA200")
+                return None
+            
+            # Fetch 5-minute data for execution
+            minute_data = self.fetch_historical_data(
+                symbol, token, "FIVE_MINUTE",
+                start_date + " 09:15", end_date + " 15:30"
+            )
+            
+            if minute_data.empty:
+                logger.warning(f"⚠️ No 5-minute data for {symbol}")
+                return None
+            
+            # Calculate all indicators
+            minute_data = self.calculate_vwap(minute_data)
+            minute_data = self.calculate_ema(minute_data, [20, 50])
+            if minute_data is None:
+                return None
+                
+            minute_data = self.calculate_adx(minute_data)
+            if minute_data is None:
+                return None
+                
+            minute_data = self.calculate_rsi(minute_data)
+            if minute_data is None:
+                return None
+                
+            minute_data = self.calculate_atr(minute_data)
+            if minute_data is None:
+                return None
+                
+            minute_data = self.calculate_supertrend(minute_data)
+            
+            logger.info(f"✅ Data fetched for {symbol}")
+            return {
+                'symbol': symbol,
+                'token': token,
+                'data_15m': data_15m,
+                'minute_data': minute_data
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Error fetching data for {symbol}: {e}")
+            return None
+    
     
     def calculate_vwap(self, data: pd.DataFrame) -> pd.DataFrame:
         """Calculate VWAP with daily reset"""
@@ -404,7 +476,7 @@ class AlphaEnsembleStrategy:
     def run_backtest(self, symbols: List[Dict], start_date: str, end_date: str, 
                     initial_capital: float = 100000) -> Dict:
         """
-        Run backtest for Alpha-Ensemble Strategy
+        Run backtest for Alpha-Ensemble Strategy with optimized parallel data fetching
         """
         logger.info("=" * 80)
         logger.info("ALPHA-ENSEMBLE STRATEGY BACKTEST")
@@ -428,71 +500,38 @@ class AlphaEnsembleStrategy:
             logger.error("❌ Failed to fetch Nifty data - cannot proceed")
             return {'trades': [], 'capital': capital}
         
-        for symbol_info in symbols:
-            symbol = symbol_info['symbol']
-            token = symbol_info['token']
+        # Parallel data fetching for all symbols (optimizes NIFTY200)
+        logger.info(f"📊 Fetching data for {len(symbols)} symbols in parallel...")
+        symbols_data = []
+        
+        # Use ThreadPoolExecutor for parallel fetching
+        max_workers = min(20, len(symbols))  # Limit to 20 concurrent requests
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # Submit all fetch tasks
+            future_to_symbol = {
+                executor.submit(self.fetch_symbol_data_parallel, symbol_info, start_date, end_date): symbol_info 
+                for symbol_info in symbols
+            }
             
-            # Skip blacklisted symbols
-            if symbol in self.BLACKLISTED_SYMBOLS:
-                logger.info(f"⚠️ {symbol} BLACKLISTED - skipping")
-                continue
+            # Collect results as they complete
+            for future in as_completed(future_to_symbol):
+                symbol_info = future_to_symbol[future]
+                try:
+                    result = future.result()
+                    if result:
+                        symbols_data.append(result)
+                except Exception as e:
+                    logger.error(f"❌ Error processing {symbol_info['symbol']}: {e}")
+        
+        logger.info(f"✅ Data fetched for {len(symbols_data)}/{len(symbols)} symbols")
+        
+        # Now process each symbol's data for trade signals
+        for symbol_data in symbols_data:
+            symbol = symbol_data['symbol']
+            data_15m = symbol_data['data_15m']
+            minute_data = symbol_data['minute_data']
             
-            logger.info(f"\n📊 Processing {symbol}...")
-            time_module.sleep(2)
-            
-            # Fetch 15-minute data for 200 EMA trend filter
-            ema_start_date = (datetime.strptime(start_date, "%Y-%m-%d") - timedelta(days=60)).strftime("%Y-%m-%d")
-            data_15m = self.fetch_historical_data(
-                symbol, token, "FIFTEEN_MINUTE",
-                ema_start_date + " 09:15", end_date + " 15:30"
-            )
-            
-            if data_15m.empty:
-                logger.warning(f"⚠️ No 15-minute data for {symbol}")
-                continue
-            
-            # Calculate 200 EMA on 15-minute chart
-            data_15m = self.calculate_ema(data_15m, [200])
-            if data_15m is None:
-                logger.warning(f"⚠️ Skipping {symbol} - insufficient 15-min data for EMA200")
-                continue
-            
-            # Fetch 5-minute data for execution
-            minute_data = self.fetch_historical_data(
-                symbol, token, "FIVE_MINUTE",
-                start_date + " 09:15", end_date + " 15:30"
-            )
-            
-            if minute_data.empty:
-                logger.warning(f"⚠️ No 5-minute data for {symbol}")
-                continue
-            
-            # Calculate all indicators on 5-minute data (check for None after each)
-            minute_data = self.calculate_vwap(minute_data)
-            
-            minute_data = self.calculate_ema(minute_data, [20, 50])
-            if minute_data is None:
-                logger.warning(f"⚠️ Skipping {symbol} - insufficient 5-min data for EMA")
-                continue
-                
-            minute_data = self.calculate_adx(minute_data)
-            if minute_data is None:
-                logger.warning(f"⚠️ Skipping {symbol} - insufficient data for ADX")
-                continue
-                
-            minute_data = self.calculate_rsi(minute_data)
-            if minute_data is None:
-                logger.warning(f"⚠️ Skipping {symbol} - insufficient data for RSI")
-                continue
-                
-            minute_data = self.calculate_atr(minute_data)
-            if minute_data is None:
-                logger.warning(f"⚠️ Skipping {symbol} - insufficient data for ATR")
-                continue
-                
-            minute_data = self.calculate_supertrend(minute_data)
-            
-            logger.info(f"✅ Indicators calculated for {symbol}")
+            logger.info(f"\n📊 Analyzing {symbol}...")
             
             # Iterate through each trading day
             trading_dates = sorted(set(minute_data.index.date))

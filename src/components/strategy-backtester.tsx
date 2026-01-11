@@ -252,6 +252,19 @@ export function StrategyBacktester() {
       return;
     }
 
+    // Warn about NIFTY200 timeout risk
+    if (symbolUniverse === "NIFTY200") {
+      const proceed = confirm(
+        "⚠️ NIFTY200 Backtest Warning\n\n" +
+        "NIFTY200 backtests process 276 symbols and may take several minutes.\n" +
+        "For faster results, consider using NIFTY50 or NIFTY100.\n\n" +
+        "Do you want to proceed?"
+      );
+      if (!proceed) {
+        return;
+      }
+    }
+
     setIsBacktesting(true);
     setError("");
     setResults([]);

@@ -656,61 +656,32 @@ class RealtimeBotEngine:
     
     def _get_symbol_tokens_parallel(self) -> Dict:
         """
-        Fetch symbol tokens sequentially to comply with Angel One rate limits.
-        
-        CRITICAL: searchScrip API has rate limit of 1 call/second per client code!
-        Reference: https://smartapi.angelbroking.com/docs/RateLimit
+        Use pre-validated tokens from NIFTY200_WATCHLIST instead of API calls.
+        This avoids rate limits and ensures consistent token mapping.
         """
-        import requests
+        from nifty200_watchlist import NIFTY200_WATCHLIST
         import time
         
         tokens = {}
         total = len(self.symbols)
         
-        logger.info(f"📊 Fetching tokens for {total} symbols (rate limited to 1/second)...")
-        logger.info(f"⏱️  Estimated time: ~{total} seconds")
+        logger.info(f"📊 Loading tokens for {total} symbols from NIFTY200_WATCHLIST...")
+        
+        # Create lookup dictionary from watchlist
+        watchlist_lookup = {item['symbol']: item['token'] for item in NIFTY200_WATCHLIST}
         
         for idx, symbol in enumerate(self.symbols, 1):
-            try:
-                url = f"{self.base_url}/rest/secure/angelbroking/order/v1/searchScrip"
-                headers = {
-                    'Authorization': f'Bearer {self.jwt_token}',
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
-                    'X-UserType': 'USER',
-                    'X-SourceID': 'WEB',
-                    'X-ClientLocalIP': '127.0.0.1',
-                    'X-ClientPublicIP': '127.0.0.1',
-                    'X-MACAddress': '00:00:00:00:00:00',
-                    'X-PrivateKey': self.api_key
+            if symbol in watchlist_lookup:
+                tokens[symbol] = {
+                    'token': watchlist_lookup[symbol],
+                    'exchange': 'NSE',
+                    'trading_symbol': symbol
                 }
-                payload = {"exchange": "NSE", "searchscrip": symbol}
-                
-                response = requests.post(url, json=payload, headers=headers, timeout=10)
-                
-                if response.status_code == 200:
-                    data = response.json()
-                    if data.get('status') and data.get('data'):
-                        scrip = data['data'][0]
-                        tokens[symbol] = {
-                            'token': scrip.get('symboltoken'),
-                            'exchange': scrip.get('exch_seg', 'NSE'),
-                            'trading_symbol': scrip.get('tradingsymbol', symbol)
-                        }
-                        logger.info(f"✅ [{idx}/{total}] Fetched {symbol}: {tokens[symbol]['token']}")
-                    else:
-                        logger.warning(f"⚠️  [{idx}/{total}] No data for {symbol}")
-                else:
-                    logger.error(f"❌ [{idx}/{total}] API error for {symbol}: {response.status_code}")
-                    
-            except Exception as e:
-                logger.error(f"❌ [{idx}/{total}] Error fetching {symbol}: {e}")
-            
-            # CRITICAL: Enforce 1 second delay between calls to respect rate limit
-            if idx < total:
-                time.sleep(1.1)  # 1.1 seconds to be safe
+                logger.info(f"✅ [{idx}/{total}] Loaded {symbol}: {tokens[symbol]['token']}")
+            else:
+                logger.warning(f"⚠️  [{idx}/{total}] Symbol {symbol} not found in watchlist")
         
-        logger.info(f"✅ Successfully fetched {len(tokens)}/{total} symbol tokens")
+        logger.info(f"✅ Successfully loaded {len(tokens)}/{total} symbol tokens from watchlist")
         return tokens
     
     def _get_fallback_tokens(self) -> Dict:

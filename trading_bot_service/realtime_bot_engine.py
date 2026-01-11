@@ -44,7 +44,31 @@ class RealtimeBotEngine:
                  trading_mode: str = 'paper', strategy: str = 'pattern', db_client=None, replay_date: str = None):
         self.user_id = user_id
         self.credentials = credentials
-        self.symbols = symbols
+        
+        # CRITICAL: Convert universe string to symbol list if needed
+        # When alpha-ensemble strategy is selected, 'symbols' might be a string like 'NIFTY50'
+        if isinstance(symbols, str):
+            logger.info(f"🔄 Converting universe '{symbols}' to symbol list...")
+            from nifty200_watchlist import NIFTY200_WATCHLIST
+            all_symbols = [stock['symbol'] for stock in NIFTY200_WATCHLIST]
+            
+            if symbols == 'NIFTY50':
+                self.symbols = all_symbols[:50]
+                logger.info(f"✅ Using NIFTY50: {len(self.symbols)} symbols")
+            elif symbols == 'NIFTY100':
+                self.symbols = all_symbols[:100]
+                logger.info(f"✅ Using NIFTY100: {len(self.symbols)} symbols")
+            elif symbols == 'NIFTY200':
+                self.symbols = all_symbols
+                logger.info(f"✅ Using NIFTY200: {len(self.symbols)} symbols")
+            else:
+                # If it's a single symbol string, wrap in list
+                self.symbols = [symbols]
+                logger.warning(f"⚠️ Unknown universe '{symbols}', treating as single symbol")
+        else:
+            self.symbols = symbols
+            logger.info(f"✅ Using provided symbol list: {len(self.symbols)} symbols")
+        
         self.trading_mode = trading_mode.lower()
         self.strategy = strategy.lower()
         self.db = db_client  # Firestore client for Activity Logger and ML Logger

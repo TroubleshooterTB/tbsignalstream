@@ -81,31 +81,29 @@ active_bots: Dict[str, 'TradingBotInstance'] = {}
 
 def _get_symbols_from_universe(universe: str) -> list:
     """Get symbol list based on universe selection"""
-    # Nifty 50 symbols (default)
-    nifty50 = [
-        'RELIANCE-EQ', 'TCS-EQ', 'HDFCBANK-EQ', 'INFY-EQ', 'ICICIBANK-EQ',
-        'HINDUNILVR-EQ', 'ITC-EQ', 'BHARTIARTL-EQ', 'KOTAKBANK-EQ', 'BAJFINANCE-EQ',
-        'LT-EQ', 'ASIANPAINT-EQ', 'AXISBANK-EQ', 'HCLTECH-EQ', 'MARUTI-EQ',
-        'SUNPHARMA-EQ', 'TITAN-EQ', 'NESTLEIND-EQ', 'ULTRACEMCO-EQ', 'WIPRO-EQ',
-        'NTPC-EQ', 'TATAMOTORS-EQ', 'BAJAJFINSV-EQ', 'TATASTEEL-EQ', 'TECHM-EQ',
-        'ADANIENT-EQ', 'ONGC-EQ', 'COALINDIA-EQ', 'HINDALCO-EQ', 'INDUSINDBK-EQ',
-        'EICHERMOT-EQ', 'DIVISLAB-EQ', 'BRITANNIA-EQ', 'DRREDDY-EQ', 'APOLLOHOSP-EQ',
-        'CIPLA-EQ', 'GRASIM-EQ', 'HEROMOTOCO-EQ', 'ADANIPORTS-EQ', 'HINDZINC-EQ',
-        'M&M-EQ', 'BPCL-EQ', 'TRENT-EQ', 'ADANIGREEN-EQ', 'LTIM-EQ',
-        'SBIN-EQ', 'POWERGRID-EQ', 'JSWSTEEL-EQ', 'SHRIRAMFIN-EQ'
-    ]
+    # Import NIFTY200 watchlist (contains all 200 symbols with tokens)
+    from nifty200_watchlist import NIFTY200_WATCHLIST
+    
+    # Convert watchlist format to symbol strings
+    all_symbols = [stock['symbol'] for stock in NIFTY200_WATCHLIST]
     
     if universe == 'NIFTY50':
-        return nifty50
+        symbols = all_symbols[:50]
+        logger.info(f"📊 Using NIFTY 50 universe: {len(symbols)} symbols")
+        return symbols
     elif universe == 'NIFTY100':
-        # For now, return Nifty 50 (can be expanded later)
-        return nifty50
+        symbols = all_symbols[:100]
+        logger.info(f"📊 Using NIFTY 100 universe: {len(symbols)} symbols")
+        return symbols
     elif universe == 'NIFTY200':
-        # For now, return Nifty 50 (can be expanded later)  
-        return nifty50
+        symbols = all_symbols  # All 200 symbols
+        logger.info(f"📊 Using NIFTY 200 universe: {len(symbols)} symbols")
+        return symbols
     else:
         # Default to Nifty 50
-        return nifty50
+        symbols = all_symbols[:50]
+        logger.warning(f"⚠️  Invalid universe '{universe}', defaulting to NIFTY 50: {len(symbols)} symbols")
+        return symbols
 
 
 class TradingBotInstance:

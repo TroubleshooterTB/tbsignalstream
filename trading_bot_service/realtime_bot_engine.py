@@ -2494,8 +2494,13 @@ class RealtimeBotEngine:
             # Step 5: Fetch historical data for each symbol
             logger.info(f"📊 Fetching historical data for {self.replay_date}...")
             historical_data = {}
+            failed_symbols = []
             
-            for symbol in self.symbols[:10]:  # Limit to 10 symbols for replay to avoid timeout
+            # Reduce to 5 symbols for replay to avoid rate limits
+            symbols_to_fetch = self.symbols[:5] if len(self.symbols) > 5 else self.symbols
+            logger.info(f"📋 Will fetch data for {len(symbols_to_fetch)} symbols: {symbols_to_fetch}")
+            
+            for symbol in symbols_to_fetch:
                 if symbol not in self.symbol_tokens:
                     logger.warning(f"No token for {symbol}, skipping...")
                     continue
@@ -2512,9 +2517,8 @@ class RealtimeBotEngine:
                         "todate": f"{self.replay_date} 15:30"
                     }
                     
-                    logger.debug(f"  Fetching {symbol} with params: {params}")
+                    logger.info(f"  📊 Fetching {symbol}...")
                     hist_data = smart_api.getCandleData(params)
-                    logger.debug(f"  API response for {symbol}: status={hist_data.get('status') if hist_data else None}, has_data={bool(hist_data.get('data')) if hist_data else False}")
                     
                     if hist_data and hist_data.get('status') and hist_data.get('data'):
                         candles = hist_data['data']
@@ -2524,14 +2528,17 @@ class RealtimeBotEngine:
                         historical_data[symbol] = df
                         logger.info(f"  ✅ {symbol}: {len(df)} candles")
                     else:
-                        error_msg = hist_data.get('message') if hist_data else 'No response'
+                        error_msg = hist_data.get('message', 'No response') if hist_data else 'No response'
                         logger.warning(f"  ⚠️  {symbol}: No data - {error_msg}")
+                        failed_symbols.append(f"{symbol} ({error_msg})")
                         
                 except Exception as e:
-                    logger.error(f"  ❌ {symbol}: Failed to fetch data - {e}", exc_info=True)
+                    logger.error(f"  ❌ {symbol}: Failed to fetch data - {e}")
+                    failed_symbols.append(f"{symbol} (Error: {str(e)[:50]})")
                     continue
                 
-                time.sleep(0.1)  # Rate limiting
+                # Increased delay to avoid rate limits
+                time.sleep(0.5)  # 500ms delay between requests
             
             if not historical_data:
                 # Better error message with date validation
@@ -2545,9 +2552,12 @@ class RealtimeBotEngine:
                 elif replay_dt > datetime.now():
                     error_msg += "This is a future date - cannot replay future data."
                 else:
-                    error_msg += "This might be a market holiday or invalid date."
+                    error_msg += f"API returned no data for any symbols. "
+                    if failed_symbols:
+                        error_msg += f"Failed symbols: {', '.join(failed_symbols[:3])}. "
+                    error_msg += "This might be a market holiday or rate limit issue."
                 
-                error_msg += " Please select a valid trading day (Mon-Fri, market open)."
+                error_msg += " Please try again or select a different date."
                 
                 logger.error(f"❌ {error_msg}")
                 raise Exception(error_msg)

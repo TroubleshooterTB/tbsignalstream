@@ -2529,13 +2529,13 @@ class RealtimeBotEngine:
                     logger.warning(f"No token for {symbol}, skipping...")
                     continue
                 
-                token = self.symbol_tokens[symbol]
+                token_info = self.symbol_tokens[symbol]
                 
                 try:
                     # Fetch intraday 1-minute candles for the replay date
                     params = {
                         "exchange": "NSE",
-                        "symboltoken": token,
+                        "symboltoken": token_info['token'],
                         "interval": "ONE_MINUTE",
                         "fromdate": f"{self.replay_date} 09:15",
                         "todate": f"{self.replay_date} 15:30"

@@ -1,0 +1,49 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: trading-bot-service
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/maxScale: '10'
+    spec:
+      containerConcurrency: 80
+      timeoutSeconds: 3600
+      containers:
+      - image: gcr.io/tbsignalstream/trading-bot-service:latest
+        resources:
+          limits:
+            memory: 2Gi
+            cpu: '2'
+        env:
+        - name: ANGELONE_TRADING_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: ANGELONE_TRADING_API_KEY
+              key: latest
+        - name: ANGELONE_TRADING_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: ANGELONE_TRADING_SECRET
+              key: latest
+        - name: ANGELONE_CLIENT_CODE
+          valueFrom:
+            secretKeyRef:
+              name: ANGELONE_CLIENT_CODE
+              key: latest
+        - name: ANGELONE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: ANGELONE_PASSWORD
+              key: latest
+        - name: ANGELONE_TOTP_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: ANGELONE_TOTP_SECRET
+              key: latest
+        - name: PYTHONUNBUFFERED
+          value: '1'
+  traffic:
+  - percent: 100
+    latestRevision: true

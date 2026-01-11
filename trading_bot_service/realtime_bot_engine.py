@@ -2534,7 +2534,23 @@ class RealtimeBotEngine:
                 time.sleep(0.1)  # Rate limiting
             
             if not historical_data:
-                raise Exception("No historical data fetched - cannot run replay simulation")
+                # Better error message with date validation
+                replay_dt = datetime.strptime(self.replay_date, '%Y-%m-%d')
+                day_name = replay_dt.strftime('%A')
+                
+                error_msg = f"No historical data available for {self.replay_date} ({day_name}). "
+                
+                if replay_dt.weekday() >= 5:  # Saturday or Sunday
+                    error_msg += "This is a weekend - markets are closed."
+                elif replay_dt > datetime.now():
+                    error_msg += "This is a future date - cannot replay future data."
+                else:
+                    error_msg += "This might be a market holiday or invalid date."
+                
+                error_msg += " Please select a valid trading day (Mon-Fri, market open)."
+                
+                logger.error(f"❌ {error_msg}")
+                raise Exception(error_msg)
             
             logger.info(f"✅ Historical data loaded for {len(historical_data)} symbols")
             

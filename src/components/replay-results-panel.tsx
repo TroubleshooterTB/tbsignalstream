@@ -45,6 +45,7 @@ export function ReplayResultsPanel() {
   const [replayProgress, setReplayProgress] = useState(0);
   const [replayTotal, setReplayTotal] = useState(0);
   const [replayStatus, setReplayStatus] = useState<string>('idle');
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [stats, setStats] = useState<ReplayStats>({
     totalSignals: 0,
     winners: 0,
@@ -75,6 +76,7 @@ export function ReplayResultsPanel() {
           setReplayProgress(data.replay_progress || 0);
           setReplayTotal(data.replay_total || 0);
           setReplayStatus(data.replay_status || 'idle');
+          setErrorMessage(data.error_message || null);
         }
       },
       (error) => {
@@ -265,8 +267,13 @@ export function ReplayResultsPanel() {
                 </>
               ) : replayStatus === 'failed' ? (
                 <>
-                  <p className="text-red-600">Replay simulation failed</p>
-                  <p className="text-sm mt-1">Check bot logs for details</p>
+                  <p className="text-red-600 font-semibold">Replay simulation failed</p>
+                  {errorMessage && (
+                    <p className="text-sm mt-2 text-red-700 bg-red-50 p-2 rounded border border-red-200">
+                      {errorMessage}
+                    </p>
+                  )}
+                  <p className="text-sm mt-2">Please check the date and try again</p>
                 </>
               ) : (
                 <>

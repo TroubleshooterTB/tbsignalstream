@@ -175,14 +175,38 @@ export function TradingBotControls() {
                 id="replayDate"
                 type="date"
                 value={botConfig.replayDate || ''}
-                onChange={(e) => updateBotConfig({ replayDate: e.target.value })}
+                onChange={(e) => {
+                  const selectedDate = new Date(e.target.value);
+                  const dayOfWeek = selectedDate.getDay(); // 0=Sunday, 6=Saturday
+                  
+                  // Warn if weekend selected
+                  if (dayOfWeek === 0 || dayOfWeek === 6) {
+                    const dayName = dayOfWeek === 0 ? 'Sunday' : 'Saturday';
+                    // Still allow selection but show warning
+                    console.warn(`⚠️ ${dayName} selected - markets closed on weekends`);
+                  }
+                  
+                  updateBotConfig({ replayDate: e.target.value });
+                }}
                 disabled={isBotRunning}
                 max={new Date().toISOString().split('T')[0]}
                 min={new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]} // Last 90 days
               />
               <p className="text-xs text-blue-600 dark:text-blue-400">
-                ⚡ Bot will replay the entire trading day at accelerated speed
+                ⚡ Select a weekday (Mon-Fri) when markets were open
               </p>
+              {botConfig.replayDate && (() => {
+                const date = new Date(botConfig.replayDate);
+                const dayOfWeek = date.getDay();
+                if (dayOfWeek === 0 || dayOfWeek === 6) {
+                  return (
+                    <p className="text-xs text-orange-600 dark:text-orange-400">
+                      ⚠️ Warning: {dayOfWeek === 0 ? 'Sunday' : 'Saturday'} - markets are closed on weekends
+                    </p>
+                  );
+                }
+                return null;
+              })()}
             </div>
           )}
         </div>

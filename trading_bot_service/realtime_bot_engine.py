@@ -2541,8 +2541,10 @@ class RealtimeBotEngine:
                         "todate": f"{self.replay_date} 15:30"
                     }
                     
-                    logger.info(f"  📊 Fetching {symbol}...")
+                    logger.info(f"  📊 Fetching {symbol} with token {token_info['token']} (type: {type(token_info['token']).__name__})")
+                    logger.info(f"  📋 API params: {params}")
                     hist_data = smart_api.getCandleData(params)
+                    logger.info(f"  📥 API response: {hist_data}")
                     
                     if hist_data and hist_data.get('status') and hist_data.get('data'):
                         candles = hist_data['data']

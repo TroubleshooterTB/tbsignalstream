@@ -125,11 +125,36 @@ class BotActivityLogger:
     
     def log_bot_started(self, mode: str, strategy: str, symbols_count: int):
         """Log when bot starts"""
-        self.log_activity(
-            f"🚀 Bot STARTED | Mode: {mode.upper()} | Strategy: {strategy} | Symbols: {symbols_count}",
-            level="INFO",
-            details={'mode': mode, 'strategy': strategy, 'symbols_count': symbols_count}
-        )
+        try:
+            logger.info(f"📝 [LOGGER] log_bot_started called - mode: {mode}, strategy: {strategy}, symbols: {symbols_count}")
+            logger.info(f"📝 [LOGGER] User ID: {self.user_id}, Firestore: {self.firestore_available}, Collection: {self.collection is not None}")
+            
+            if not self.firestore_available or not self.collection:
+                logger.error(f"❌ [LOGGER] Cannot log bot start - Firestore not available or collection is None")
+                logger.error(f"❌ [LOGGER] Check: 1) Firebase initialized, 2) Firestore client created, 3) Collection name correct")
+                return
+            
+            activity = {
+                'user_id': self.user_id,
+                'timestamp': firestore.SERVER_TIMESTAMP,
+                'type': 'bot_started',
+                'symbol': 'SYSTEM',
+                'message': f"🚀 Bot STARTED | Mode: {mode.upper()} | Strategy: {strategy} | Symbols: {symbols_count}",
+                'level': 'INFO',
+                'details': {'mode': mode, 'strategy': strategy, 'symbols_count': symbols_count}
+            }
+            
+            logger.info(f"📝 [LOGGER] Activity document prepared, attempting Firestore write...")
+            logger.info(f"📝 [LOGGER] Collection path: bot_activity, User ID: {self.user_id}")
+            doc_ref = self.collection.add(activity)
+            logger.info(f"✅ [LOGGER] Bot start logged successfully! Document ID: {doc_ref[1].id}")
+            logger.info(f"✅ [LOGGER] Dashboard activity feed should now show: 🚀 Bot STARTED")
+            
+        except Exception as e:
+            logger.error(f"❌ [LOGGER] CRITICAL: Failed to log bot start: {e}", exc_info=True)
+            logger.error(f"❌ [LOGGER] This means activity feed will be empty. Check Firestore permissions.")
+            # Re-raise to alert caller that logging failed
+            raise
     
     def log_websocket_status(self, status: str, details: Optional[Dict] = None):
         """Log WebSocket connection status changes"""
@@ -290,6 +315,14 @@ class BotActivityLogger:
             details: Additional pattern details
         """
         try:
+            logger.info(f"📝 [LOGGER] Starting log_pattern_detected for {symbol}")
+            logger.info(f"📝 [LOGGER] Firestore available: {self.firestore_available}")
+            logger.info(f"📝 [LOGGER] Collection initialized: {self.collection is not None}")
+            
+            if not self.firestore_available or not self.collection:
+                logger.error(f"❌ [LOGGER] Cannot log - Firestore not available or collection is None")
+                return
+            
             activity = {
                 'user_id': self.user_id,
                 'timestamp': firestore.SERVER_TIMESTAMP,
@@ -301,11 +334,15 @@ class BotActivityLogger:
                 'details': details or {}
             }
             
-            self.collection.add(activity)
-            logger.debug(f"✅ Logged pattern detection: {symbol} - {pattern}")
+            logger.info(f"📝 [LOGGER] Activity data prepared: {activity}")
+            logger.info(f"📝 [LOGGER] Attempting Firestore write...")
+            doc_ref = self.collection.add(activity)
+            logger.info(f"✅ [LOGGER] Firestore write successful! Doc ID: {doc_ref[1].id}")
+            logger.info(f"✅ [LOGGER] Pattern logged: {symbol} - {pattern} (Confidence: {confidence:.1f}%, R:R: {rr_ratio:.2f})")
             
         except Exception as e:
-            logger.error(f"Failed to log pattern detection: {e}")
+            logger.error(f"❌ [LOGGER] Failed to log pattern detection for {symbol}: {e}", exc_info=True)
+            logger.error(f"❌ [LOGGER] Activity data was: {locals().get('activity', 'N/A')}")
     
     def log_screening_started(self, symbol: str, pattern: str):
         """Log when 24-level advanced screening starts."""
@@ -576,6 +613,13 @@ class BotActivityLogger:
             symbols_with_data: Number of symbols with sufficient data
         """
         try:
+            logger.info(f"📝 [LOGGER] log_scan_cycle_start called - total: {total_symbols}, with_data: {symbols_with_data}")
+            logger.info(f"📝 [LOGGER] Firestore available: {self.firestore_available}, Collection: {self.collection is not None}")
+            
+            if not self.firestore_available or not self.collection:
+                logger.error(f"❌ [LOGGER] Cannot log scan cycle - Firestore not available")
+                return
+            
             activity = {
                 'user_id': self.user_id,
                 'timestamp': firestore.SERVER_TIMESTAMP,
@@ -588,11 +632,12 @@ class BotActivityLogger:
                 }
             }
             
-            self.collection.add(activity)
-            logger.debug(f"✅ Logged scan cycle start: {total_symbols} symbols")
+            logger.info(f"📝 [LOGGER] Attempting Firestore write...")
+            doc_ref = self.collection.add(activity)
+            logger.info(f"✅ [LOGGER] Scan cycle logged! Doc ID: {doc_ref[1].id}")
             
         except Exception as e:
-            logger.error(f"Failed to log scan cycle start: {e}")
+            logger.error(f"❌ [LOGGER] Failed to log scan cycle: {e}", exc_info=True)
     
     def log_symbol_scanning(self, symbol: str, current_price: float):
         """

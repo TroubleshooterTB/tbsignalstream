@@ -789,28 +789,28 @@ class RealtimeBotEngine:
         )
         
         # Calculate time range
-        # CRITICAL OPTIMIZATION: Fetch FULL previous trading session (9:15 AM - 3:30 PM = 375 candles)
-        # This allows INSTANT signal generation at 9:16 AM instead of waiting 50 minutes!
-        # 375 candles is MORE than enough for all indicators (RSI, MACD, ATR, ADX, SMA50)
+        # CRITICAL OPTIMIZATION: Fetch ONLY last 60 minutes to avoid rate limits
+        # 60 candles is MORE than enough for all required indicators (RSI, MACD, ATR, ADX need max 28 candles)
+        # This reduces API calls from 375 to 60 (6X reduction) and completes in ~60 seconds instead of 375 seconds
         if now < market_open_time:
-            # Before market open: Fetch yesterday's COMPLETE trading session
+            # Before market open: Fetch yesterday's LAST HOUR of trading (2:30 PM - 3:30 PM)
             yesterday = now - timedelta(days=1)
             # Handle weekends: if today is Monday, fetch from Friday
             while yesterday.weekday() >= 5:  # Saturday=5, Sunday=6
                 yesterday -= timedelta(days=1)
             to_date = yesterday.replace(hour=15, minute=30, second=0, microsecond=0)  # Yesterday 3:30 PM
-            from_date = yesterday.replace(hour=9, minute=15, second=0, microsecond=0)  # Yesterday 9:15 AM
-            logger.info(f"📊 Fetching previous trading session: {from_date.strftime('%Y-%m-%d %H:%M')} to {to_date.strftime('%Y-%m-%d %H:%M')}")
-            logger.info(f"📊 Expected ~375 candles (full session) for INSTANT signal generation!")
+            from_date = yesterday.replace(hour=14, minute=30, second=0, microsecond=0)  # Yesterday 2:30 PM (LAST 60 MIN)
+            logger.info(f"📊 Fetching last 60 minutes of previous session: {from_date.strftime('%Y-%m-%d %H:%M')} to {to_date.strftime('%Y-%m-%d %H:%M')}")
+            logger.info(f"📊 Expected ~60 candles for INSTANT signal generation (avoids rate limits)!")
         else:
-            # After market open: Fetch ONLY yesterday's session (realtime will build today's candles)
+            # After market open: Fetch ONLY yesterday's last hour (realtime will build today's candles)
             yesterday = now - timedelta(days=1)
             while yesterday.weekday() >= 5:  # Handle weekends
                 yesterday -= timedelta(days=1)
             to_date = yesterday.replace(hour=15, minute=30, second=0, microsecond=0)  # Yesterday 3:30 PM
-            from_date = yesterday.replace(hour=9, minute=15, second=0, microsecond=0)  # Yesterday 9:15 AM
-            logger.info(f"📊 Fetching previous trading session only: {from_date.strftime('%Y-%m-%d %H:%M')} to {to_date.strftime('%Y-%m-%d %H:%M')}")
-            logger.info(f"📊 Expected ~375 candles (realtime will add today's candles)")
+            from_date = yesterday.replace(hour=14, minute=30, second=0, microsecond=0)  # Yesterday 2:30 PM (LAST 60 MIN)
+            logger.info(f"📊 Fetching last 60 minutes of previous session: {from_date.strftime('%Y-%m-%d %H:%M')} to {to_date.strftime('%Y-%m-%d %H:%M')}")
+            logger.info(f"📊 Expected ~60 candles (realtime will add today's candles)")
         
         success_count = 0
         fail_count = 0
@@ -1010,6 +1010,21 @@ class RealtimeBotEngine:
                 verbose_mode=True  # ALWAYS enable verbose logging for dashboard visibility
             )
             logger.info("✅ Bot Activity Logger initialized (verbose mode: ON, real-time dashboard feed)")
+            
+            # DIAGNOSTIC: Test write immediately to verify Firestore connectivity
+            try:
+                logger.info("🔥 [TEST] Testing activity logger write to Firestore...")
+                self._activity_logger.log_bot_started(
+                    mode=self.trading_mode,
+                    strategy=self.strategy,
+                    symbols_count=len(self.symbols)
+                )
+                logger.info("✅ [TEST] Activity logger write successful! Dashboard feed should update.")
+            except Exception as test_err:
+                logger.error(f"❌ [TEST] Activity logger write FAILED: {test_err}", exc_info=True)
+                logger.error("❌ [TEST] Bot will continue but dashboard activity feed may not work")
+                # Don't disable activity logger - let it retry on next log
+                
         except Exception as e:
             logger.error(f"Failed to initialize Activity Logger: {e}", exc_info=True)
             self._activity_logger = None  # Disabled mode
@@ -1226,12 +1241,14 @@ class RealtimeBotEngine:
         # NEW: Log scan cycle start to activity feed
         if self._activity_logger:
             try:
+                logger.info(f"🔍 [ACTIVITY] Logging scan cycle start...")
                 self._activity_logger.log_scan_cycle_start(
                     total_symbols=len(self.symbols),
                     symbols_with_data=len(candle_data_copy)
                 )
+                logger.info(f"✅ [ACTIVITY] Scan cycle logged successfully")
             except Exception as e:
-                logger.debug(f"Activity logger (scan start) error: {e}")
+                logger.error(f"❌ [ACTIVITY] Scan cycle log failed: {e}", exc_info=True)
         
         for symbol in self.symbols:
             try:
@@ -1361,17 +1378,22 @@ class RealtimeBotEngine:
                 
                 # NEW: Log pattern detection to dashboard
                 if self._activity_logger:
-                    self._activity_logger.log_pattern_detected(
-                        symbol=symbol,
-                        pattern=pattern_details.get('pattern_name', 'Unknown'),
-                        confidence=confidence,
-                        rr_ratio=rr_ratio,
-                        details={
-                            'current_price': current_price,
-                            'stop_loss': stop_loss,
-                            'target': target
-                        }
-                    )
+                    try:
+                        logger.info(f"🔍 [ACTIVITY] Logging pattern detection for {symbol}: {pattern_details.get('pattern_name', 'Unknown')}")
+                        self._activity_logger.log_pattern_detected(
+                            symbol=symbol,
+                            pattern=pattern_details.get('pattern_name', 'Unknown'),
+                            confidence=confidence,
+                            rr_ratio=rr_ratio,
+                            details={
+                                'current_price': current_price,
+                                'stop_loss': stop_loss,
+                                'target': target
+                            }
+                        )
+                        logger.info(f"✅ [ACTIVITY] Pattern logged successfully for {symbol}")
+                    except Exception as e:
+                        logger.error(f"❌ [ACTIVITY] Failed to log pattern for {symbol}: {e}", exc_info=True)
                 
             except Exception as e:
                 logger.error(f"Error analyzing {symbol}: {e}", exc_info=True)

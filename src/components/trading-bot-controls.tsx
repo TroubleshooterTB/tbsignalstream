@@ -128,26 +128,27 @@ export function TradingBotControls() {
           </div>
         </div>
 
-        <div className="flex items-center justify-between p-4 bg-amber-50 dark:bg-amber-950 rounded-lg border border-amber-200 dark:border-amber-800">
-          <div className="flex flex-col gap-1">
-            <Label htmlFor="liveMode" className="cursor-pointer font-semibold">
-              {botConfig.mode === 'live' ? '🔴 LIVE TRADING MODE' : botConfig.mode === 'replay' ? '🔄 REPLAY MODE' : '📄 Paper Trading Mode'}
-            </Label>
-            <span className="text-sm text-muted-foreground">
-              {botConfig.mode === 'live' 
-                ? 'Real money will be used. Trades will be executed on your broker account.' 
-                : botConfig.mode === 'replay'
-                ? 'Test bot on historical date. No real trades.'
-                : 'Simulated trading. No real money will be used.'}
-            </span>
+        {/* Hide Live/Paper toggle when in Replay Mode */}
+        {botConfig.mode !== 'replay' && (
+          <div className="flex items-center justify-between p-4 bg-amber-50 dark:bg-amber-950 rounded-lg border border-amber-200 dark:border-amber-800">
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="liveMode" className="cursor-pointer font-semibold">
+                {botConfig.mode === 'live' ? '🔴 LIVE TRADING MODE' : '📄 Paper Trading Mode'}
+              </Label>
+              <span className="text-sm text-muted-foreground">
+                {botConfig.mode === 'live' 
+                  ? 'Real money will be used. Trades will be executed on your broker account.' 
+                  : 'Simulated trading. No real money will be used.'}
+              </span>
+            </div>
+            <Switch
+              id="liveMode"
+              checked={botConfig.mode === 'live'}
+              onCheckedChange={(checked) => updateBotConfig({ mode: checked ? 'live' : 'paper' })}
+              disabled={isBotRunning}
+            />
           </div>
-          <Switch
-            id="liveMode"
-            checked={botConfig.mode === 'live'}
-            onCheckedChange={(checked) => updateBotConfig({ mode: checked ? 'live' : 'paper' })}
-            disabled={isBotRunning || botConfig.mode === 'replay'}
-          />
-        </div>
+        )}
 
         {/* Phase 3: Replay Mode Option */}
         <div className="p-4 bg-blue-50 dark:bg-blue-950 rounded-lg border border-blue-200 dark:border-blue-800 space-y-3">

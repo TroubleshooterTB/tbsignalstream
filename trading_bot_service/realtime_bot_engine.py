@@ -146,10 +146,21 @@ class RealtimeBotEngine:
             # 🔄 REPLAY MODE: Use simulation instead of real-time trading
             if self.is_replay_mode:
                 logger.info("="*80)
-                logger.info(f"🔄 Starting REPLAY MODE simulation for {self.replay_date}")
+                logger.info(f"🔄 REPLAY MODE ACTIVE - Date: {self.replay_date}")
+                logger.info(f"   Mode: {self.trading_mode}")
+                logger.info(f"   Strategy: {self.strategy}")
+                logger.info(f"   Symbols: {len(self.symbols)} symbols")
                 logger.info("="*80)
                 self._run_replay_simulation(running_flag)
                 return
+            
+            # Regular real-time mode
+            logger.info("="*80)
+            logger.info(f"🔴 REAL-TIME MODE ACTIVE")
+            logger.info(f"   Mode: {self.trading_mode.upper()}")
+            logger.info(f"   Strategy: {self.strategy.upper()}")
+            logger.info(f"   Symbols: {len(self.symbols)} symbols")
+            logger.info("="*80)
             
             # Step 1: Initialize symbol tokens (parallel fetch) - WITH ERROR HANDLING
             logger.info("Fetching symbol tokens...")

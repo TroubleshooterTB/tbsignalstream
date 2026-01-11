@@ -2491,6 +2491,24 @@ class RealtimeBotEngine:
             # Step 4: Parse replay date
             replay_dt = datetime.strptime(self.replay_date, '%Y-%m-%d')
             
+            # Step 4.5: Convert universe string to actual symbols if needed
+            # Alpha-Ensemble passes universe name (e.g., "NIFTY50"), need to convert to symbols
+            if isinstance(self.symbols, str):
+                logger.info(f"🔄 Converting universe '{self.symbols}' to symbol list...")
+                from nifty200_watchlist import NIFTY200_WATCHLIST
+                all_symbols = [stock['symbol'] for stock in NIFTY200_WATCHLIST]
+                
+                if self.symbols == 'NIFTY50':
+                    self.symbols = all_symbols[:50]
+                elif self.symbols == 'NIFTY100':
+                    self.symbols = all_symbols[:100]
+                elif self.symbols == 'NIFTY200':
+                    self.symbols = all_symbols
+                else:
+                    self.symbols = all_symbols[:50]  # Default to NIFTY50
+                
+                logger.info(f"✅ Converted to {len(self.symbols)} symbols")
+            
             # Step 5: Fetch historical data for each symbol
             logger.info(f"📊 Fetching historical data for {self.replay_date}...")
             historical_data = {}

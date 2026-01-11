@@ -262,7 +262,12 @@ export function BotActivityFeed() {
           ) : (
             <div className="space-y-2">
               {activities.map((activity) => {
-                const config = activityConfig[activity.type];
+                const config = activityConfig[activity.type] || {
+                  icon: <Activity className="h-4 w-4" />,
+                  color: "text-gray-500",
+                  bgColor: "bg-gray-50",
+                  label: activity.type
+                };
                 
                 return (
                   <div

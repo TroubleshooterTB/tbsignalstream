@@ -79,7 +79,7 @@ export const env = {
   // Backend URLs
   backendUrl: validateUrl(
     getEnvVar('NEXT_PUBLIC_TRADING_BOT_URL', false) || 
-    'https://trading-bot-service-818546654122.asia-south1.run.app',
+    'https://trading-bot-service-vmxfbt7qiq-el.a.run.app',
     'Backend URL'
   ),
 

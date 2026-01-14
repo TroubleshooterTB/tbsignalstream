@@ -129,8 +129,8 @@ class AngelWebSocketV2Manager:
             )
             self._ws_thread.start()
             
-            # Wait for connection (increased to 30 seconds for Cloud Run)
-            timeout = 30
+            # Wait for connection (increased to 60 seconds for Cloud Run cold starts)
+            timeout = 60
             start_time = time.time()
             logger.info(f"⏳ Waiting for WebSocket connection (timeout: {timeout}s)...")
             

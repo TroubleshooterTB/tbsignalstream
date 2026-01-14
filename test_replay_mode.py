@@ -9,6 +9,10 @@ from datetime import datetime, timedelta
 from SmartApi import SmartConnect
 import pyotp
 
+# Load environment variables from .env file
+from dotenv import load_dotenv
+load_dotenv(os.path.join(os.path.dirname(__file__), 'trading_bot_service', '.env'))
+
 # Add service directory to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'trading_bot_service'))
 

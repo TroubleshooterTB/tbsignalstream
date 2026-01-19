@@ -895,8 +895,11 @@ class DefiningOrderStrategy:
             time_module.sleep(2)
             
             # Fetch 1-hour data for trend filtering (need enough history for SMA 50)
-            # Fetch from 60 days ago to build indicators properly
-            sma_start_date = (datetime.strptime(start_date, "%Y-%m-%d") - timedelta(days=60)).strftime("%Y-%m-%d")
+            # CRITICAL FIX: Need ~100 days of hourly data to build SMA(50) with confidence
+            # 50 hours = ~8 trading days minimum, but we fetch 100 days to ensure coverage
+            sma_start_date = (datetime.strptime(start_date, "%Y-%m-%d") - timedelta(days=100)).strftime("%Y-%m-%d")
+            
+            logger.info(f"   Fetching hourly data from {sma_start_date} (for SMA indicators)")
             
             hourly_data = self.fetch_historical_data(
                 symbol, token, "ONE_HOUR", 
@@ -906,6 +909,8 @@ class DefiningOrderStrategy:
             if hourly_data.empty:
                 logger.warning(f"⚠️ No hourly data for {symbol}")
                 continue
+            
+            logger.info(f"   ✅ Fetched {len(hourly_data)} hourly candles for {symbol}")
             
             # Fetch 5-minute data for entry signals
             minute_data = self.fetch_historical_data(
@@ -938,7 +943,7 @@ class DefiningOrderStrategy:
                 trend_bias = self.check_perfect_order(hourly_data, hourly_idx_num)
                 
                 if trend_bias is None:
-                    logger.info(f"    ⚠️ {date}: No trend bias (insufficient SMA data)")
+                    logger.warning(f"    ⚠️ {date}: No trend bias - need 50+ hourly candles for SMA(50). Current: {hourly_idx_num} candles available")
                     continue  # No valid trend
                 
                 # v1.4: Extract SMA50 value for trend strength check

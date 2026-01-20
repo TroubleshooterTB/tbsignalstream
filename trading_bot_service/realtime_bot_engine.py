@@ -127,6 +127,9 @@ class RealtimeBotEngine:
         self._activity_logger = None  # NEW: Real-time activity logging for dashboard
         self._mean_reversion = None  # 🔄 NEW: Mean reversion strategy for sideways markets (ADX < 20)
         
+        # Position tracking
+        self.open_positions = {}  # Track currently open positions {symbol: position_data}
+        
         # 🚨 AUDIT FIX: OTR Monitoring for SEBI Compliance
         try:
             from otr_monitor import OrderToTradeRatioMonitor

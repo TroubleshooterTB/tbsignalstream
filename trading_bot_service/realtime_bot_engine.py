@@ -1092,33 +1092,46 @@ class RealtimeBotEngine:
         
         # Initialize Ironclad if needed
         if self.strategy in ['ironclad', 'both']:
-            from ironclad_strategy import IroncladStrategy
-            self._ironclad = IroncladStrategy(db_client=None, dr_window_minutes=60)
+            try:
+                from ironclad_strategy import IroncladStrategy
+                self._ironclad = IroncladStrategy(db_client=None, dr_window_minutes=60)
+                logger.info("✅ Ironclad strategy initialized")
+            except ImportError as e:
+                logger.warning(f"⚠️  Ironclad strategy not available: {e}")
+                self._ironclad = None
         
         # Initialize Alpha-Ensemble if needed
         if self.strategy == 'alpha-ensemble':
-            from alpha_ensemble_strategy import AlphaEnsembleStrategy
-            # Load strategy parameters from bot_config
-            strategy_params = bot_config.get('strategy_params', {})
-            self._alpha_ensemble = AlphaEnsembleStrategy(
-                api_key=self.api_key,
-                jwt_token=self.jwt_token,
-                strategy_params=strategy_params
-            )
-            logger.info(f"✅ Alpha-Ensemble strategy initialized with custom parameters")
+            try:
+                from alpha_ensemble_strategy import AlphaEnsembleStrategy
+                # Load strategy parameters from bot_config
+                strategy_params = bot_config.get('strategy_params', {})
+                self._alpha_ensemble = AlphaEnsembleStrategy(
+                    api_key=self.api_key,
+                    jwt_token=self.jwt_token,
+                    strategy_params=strategy_params
+                )
+                logger.info(f"✅ Alpha-Ensemble strategy initialized with custom parameters")
+            except ImportError as e:
+                logger.warning(f"⚠️  Alpha-Ensemble strategy not available: {e}")
+                self._alpha_ensemble = None
         
         # Initialize Mean Reversion Strategy for sideways markets
-        from mean_reversion_strategy import MeanReversionStrategy
-        self._mean_reversion = MeanReversionStrategy(
-            bb_period=20,
-            bb_std=2.0,
-            rsi_period=14,
-            rsi_oversold=30,
-            rsi_overbought=70,
-            volume_threshold=0.5,  # Relaxed: 50% of avg volume OK in sideways
-            risk_reward=1.5
-        )
-        logger.info(f"✅ Mean Reversion strategy initialized (activates when ADX < 20)")
+        try:
+            from mean_reversion_strategy import MeanReversionStrategy
+            self._mean_reversion = MeanReversionStrategy(
+                bb_period=20,
+                bb_std=2.0,
+                rsi_period=14,
+                rsi_oversold=30,
+                rsi_overbought=70,
+                volume_threshold=0.5,  # Relaxed: 50% of avg volume OK in sideways
+                risk_reward=1.5
+            )
+            logger.info(f"✅ Mean Reversion strategy initialized (activates when ADX < 20)")
+        except ImportError as e:
+            logger.warning(f"⚠️  Mean Reversion strategy not available: {e}")
+            self._mean_reversion = None
         
         logger.info("✅ Trading managers initialized")
     

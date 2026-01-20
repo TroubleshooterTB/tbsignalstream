@@ -123,6 +123,7 @@ class RealtimeBotEngine:
         self._advanced_screening = None  # NEW: Universal 24-level screening layer
         self._ml_logger = None  # NEW: ML data logging for model training
         self._activity_logger = None  # NEW: Real-time activity logging for dashboard
+        self._mean_reversion = None  # 🔄 NEW: Mean reversion strategy for sideways markets (ADX < 20)
         
         # 🚨 AUDIT FIX: OTR Monitoring for SEBI Compliance
         from otr_monitor import OrderToTradeRatioMonitor
@@ -1083,6 +1084,19 @@ class RealtimeBotEngine:
             )
             logger.info(f"✅ Alpha-Ensemble strategy initialized with custom parameters")
         
+        # Initialize Mean Reversion Strategy for sideways markets
+        from mean_reversion_strategy import MeanReversionStrategy
+        self._mean_reversion = MeanReversionStrategy(
+            bb_period=20,
+            bb_std=2.0,
+            rsi_period=14,
+            rsi_oversold=30,
+            rsi_overbought=70,
+            volume_threshold=0.5,  # Relaxed: 50% of avg volume OK in sideways
+            risk_reward=1.5
+        )
+        logger.info(f"✅ Mean Reversion strategy initialized (activates when ADX < 20)")
+        
         logger.info("✅ Trading managers initialized")
     
     def _is_market_open(self):
@@ -1435,26 +1449,64 @@ class RealtimeBotEngine:
                 
                 df = candle_data_copy[symbol].copy()
                 
-                # 🚨 AUDIT FIX: ADX Regime Filter
-                # Block entries in choppy/sideways markets (ADX < 20 = no trend)
-                if 'adx' in df.columns:
-                    current_adx = float(df['adx'].iloc[-1])
-                    if current_adx < 20:
-                        logger.debug(f"⏭️ [{symbol}] ADX FILTER: {current_adx:.1f} < 20 (choppy market, no trend)")
-                        if self._activity_logger:
-                            try:
-                                self._activity_logger.log_symbol_skipped(
-                                    symbol=symbol,
-                                    reason=f"ADX={current_adx:.1f} < 20 (no trend)"
-                                )
-                            except:
-                                pass
+                # � DUAL-REGIME SYSTEM: Trend-Following vs Mean Reversion
+                # ADX >= 20: Use trend-following strategies (breakouts, patterns)
+                # ADX < 20: Use mean reversion strategy (Bollinger Bands + RSI)
+                
+                current_adx = float(df['adx'].iloc[-1]) if 'adx' in df.columns else 25  # Default to trending if no ADX
+                
+                if current_adx < 20:
+                    # 🔄 SIDEWAYS MARKET: Try Mean Reversion Strategy
+                    logger.debug(f"🔄 [{symbol}] ADX {current_adx:.1f} < 20 → SIDEWAYS MARKET → Checking Mean Reversion")
+                    
+                    try:
+                        # Calculate Bollinger Bands if not present
+                        if 'BB_MIDDLE' not in df.columns:
+                            df = self._mean_reversion.calculate_indicators(df)
+                        
+                        # Find mean reversion setup
+                        mr_signal = self._mean_reversion.find_mean_reversion_setup(df, symbol)
+                        
+                        if mr_signal:
+                            logger.info(f"🔄 [{symbol}] MEAN REVERSION OPPORTUNITY (ADX {current_adx:.1f})")
+                            
+                            # Convert to pattern-detector compatible format
+                            pattern_details = {
+                                'pattern': 'MEAN_REVERSION',
+                                'action': mr_signal['action'],
+                                'entry': mr_signal['entry_price'],
+                                'stop_loss': mr_signal['stop_loss'],
+                                'target': mr_signal['target'],
+                                'confidence': mr_signal['confidence'],
+                                'details': mr_signal['rationale']
+                            }
+                            
+                            # Continue to signal validation (skip pattern detection)
+                        else:
+                            logger.debug(f"⏭️ [{symbol}] No mean reversion setup found")
+                            if self._activity_logger:
+                                try:
+                                    self._activity_logger.log_symbol_skipped(
+                                        symbol=symbol,
+                                        reason=f"ADX={current_adx:.1f} < 20, no mean reversion setup"
+                                    )
+                                except:
+                                    pass
+                            continue
+                    
+                    except Exception as mr_err:
+                        logger.error(f"Error checking mean reversion for {symbol}: {mr_err}")
                         continue
                 else:
-                    logger.warning(f"⚠️ [{symbol}] No ADX data available - cannot apply regime filter")
+                    # 🎯 TRENDING MARKET: Use Pattern Detection (breakouts, trends)
+                    logger.debug(f"🎯 [{symbol}] ADX {current_adx:.1f} >= 20 → TRENDING MARKET → Pattern Detection")
                 
                 # Pattern detection (detects both forming and confirmed patterns)
-                pattern_details = self._pattern_detector.scan(df)
+                # ONLY runs if ADX >= 20 (trending) OR if mean reversion already found signal
+                if current_adx >= 20:
+                    pattern_details = self._pattern_detector.scan(df)
+                # else: pattern_details already set by mean reversion above
+                
                 if not pattern_details:
                     logger.info(f"[DEBUG] {symbol}: No pattern detected this cycle.")
                     

@@ -7,6 +7,7 @@ import logging
 import time
 import threading
 import asyncio
+import requests  # For REST API calls (historical data, replay mode)
 from datetime import datetime, timedelta
 from typing import Dict, List, Callable, Optional
 import pandas as pd

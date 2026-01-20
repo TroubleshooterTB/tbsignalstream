@@ -14,6 +14,10 @@ import pandas as pd
 import numpy as np
 from collections import defaultdict, deque
 
+# Firebase/Firestore imports for global access
+import firebase_admin
+from firebase_admin import firestore
+
 # Import comprehensive error handling
 from bot_errors import (
     BotError, CriticalError, RecoverableError, WarningError,

@@ -3118,7 +3118,8 @@ class RealtimeBotEngine:
                 
                 try:
                     # Fetch intraday 1-minute candles using REST API (SDK doesn't work reliably for historical data)
-                    url = "https://apiconnect.angelbroking.com/rest/secure/angelbroking/historical/v1/getCandleData"
+                    # CRITICAL: Use angelone.in domain (Angel Broking rebranded to Angel One)
+                    url = "https://apiconnect.angelone.in/rest/secure/angelbroking/historical/v1/getCandleData"
                     
                     headers = {
                         'Authorization': f'Bearer {smart_api.getfeedToken()}',

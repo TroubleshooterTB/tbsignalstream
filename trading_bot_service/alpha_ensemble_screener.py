@@ -150,7 +150,8 @@ class AlphaEnsembleScreener:
                             from_date: str, to_date: str) -> pd.DataFrame:
         """Fetch historical candle data from Angel One"""
         try:
-            url = "https://apiconnect.angelbroking.com/rest/secure/angelbroking/historical/v1/getCandleData"
+            # CRITICAL: Use angelone.in domain (Angel Broking rebranded to Angel One)
+            url = "https://apiconnect.angelone.in/rest/secure/angelbroking/historical/v1/getCandleData"
             
             headers = {
                 'Authorization': f'Bearer {self.jwt_token}',

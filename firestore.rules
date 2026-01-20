@@ -63,6 +63,11 @@ service cloud.firestore {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
     
+    // Bot status - real-time bot performance and regime data
+    match /bot_status/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
     // Bot activity - real-time analysis feed
     match /bot_activity/{activityId} {
       allow read: if request.auth != null && resource.data.user_id == request.auth.uid;

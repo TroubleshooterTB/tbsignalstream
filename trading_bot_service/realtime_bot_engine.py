@@ -120,6 +120,10 @@ class RealtimeBotEngine:
         self._ml_logger = None  # NEW: ML data logging for model training
         self._activity_logger = None  # NEW: Real-time activity logging for dashboard
         
+        # 🚨 AUDIT FIX: OTR Monitoring for SEBI Compliance
+        from otr_monitor import OrderToTradeRatioMonitor
+        self._otr_monitor = OrderToTradeRatioMonitor(otr_threshold=20.0)
+        
         # NEW: Error handling and health monitoring
         self.error_handler = None  # Initialized after activity logger
         self.health_monitor = get_health_monitor()
@@ -1108,6 +1112,15 @@ class RealtimeBotEngine:
                     logger.debug(f"📝 PAPER MODE: Analyzing outside market hours (testing mode)")
                     # Continue execution
             
+            # 🚨 AUDIT FIX: Liquidity U-Shape Time Filter
+            # Block entries during 12:00-14:30 PM (midday liquidity trap)
+            import pytz
+            ist = pytz.timezone('Asia/Kolkata')
+            current_time = datetime.now(ist).time()
+            if time(12, 0) <= current_time <= time(14, 30):
+                logger.debug("⏸️  LIQUIDITY FILTER: Skipping 12:00-14:30 (midday U-shape dip - 12.5% WR trap)")
+                return
+            
             # Check EOD auto-close (3:15 PM for safety before broker's 3:20 PM)
             self._check_eod_auto_close()
             
@@ -1304,6 +1317,24 @@ class RealtimeBotEngine:
                     continue
                 
                 df = candle_data_copy[symbol].copy()
+                
+                # 🚨 AUDIT FIX: ADX Regime Filter
+                # Block entries in choppy/sideways markets (ADX < 20 = no trend)
+                if 'adx' in df.columns:
+                    current_adx = float(df['adx'].iloc[-1])
+                    if current_adx < 20:
+                        logger.debug(f"⏭️ [{symbol}] ADX FILTER: {current_adx:.1f} < 20 (choppy market, no trend)")
+                        if self._activity_logger:
+                            try:
+                                self._activity_logger.log_symbol_skipped(
+                                    symbol=symbol,
+                                    reason=f"ADX={current_adx:.1f} < 20 (no trend)"
+                                )
+                            except:
+                                pass
+                        continue
+                else:
+                    logger.warning(f"⚠️ [{symbol}] No ADX data available - cannot apply regime filter")
                 
                 # Pattern detection (detects both forming and confirmed patterns)
                 pattern_details = self._pattern_detector.scan(df)
@@ -2132,7 +2163,15 @@ class RealtimeBotEngine:
             # Place real order with enhanced error handling
             transaction_type = TransactionType.BUY if direction == 'up' else TransactionType.SELL
             
+            # 🚨 AUDIT FIX: Check OTR throttle before placing order
+            if self._otr_monitor.is_throttled():
+                logger.warning(f"🚫 OTR THROTTLE: Cannot place order for {symbol} (high OTR - SEBI compliance)")
+                return
+            
             try:
+                # Record order placement for OTR tracking
+                self._otr_monitor.record_order_placed()
+                
                 order_result = self._order_manager.place_order(
                     symbol=symbol,
                     token=token_info['token'],
@@ -2140,7 +2179,8 @@ class RealtimeBotEngine:
                     transaction_type=transaction_type,
                     order_type=OrderType.MARKET,
                     quantity=quantity,
-                    product_type=ProductType.INTRADAY
+                    product_type=ProductType.INTRADAY,
+                    strategy_tag=self.strategy.upper()  # 🚨 AUDIT FIX: SEBI compliance
                 )
             except Exception as order_err:
                 logger.error(f"❌ CRITICAL: Order placement exception for {symbol}: {order_err}", exc_info=True)
@@ -2150,6 +2190,9 @@ class RealtimeBotEngine:
             if order_result:
                 order_id = order_result.get('orderid', 'unknown')
                 logger.info(f"✅ LIVE order placed: {order_id}")
+                
+                # 🚨 AUDIT FIX: Record order execution for OTR tracking
+                self._otr_monitor.record_order_executed()
                 
                 # Create position data with ML signal ID
                 position_data = {
@@ -2236,15 +2279,67 @@ class RealtimeBotEngine:
                 entry_price = position.get('entry_price', 0)
                 stop_loss = position.get('stop_loss', 0)
                 target = position.get('target', 0)
+                direction = position.get('direction', 'up')
+                
+                # 🚨 AUDIT FIX: Breakeven Stop Logic
+                # Move stop to entry when trade reaches 1R profit
+                if not position.get('breakeven_moved', False):
+                    risk_distance = abs(entry_price - stop_loss)
+                    
+                    if direction == 'up':
+                        profit_distance = current_price - entry_price
+                        # Check if reached 1R profit
+                        if profit_distance >= risk_distance and stop_loss < entry_price:
+                            logger.info(f"🔒 [{symbol}] BREAKEVEN: Moving stop to entry (1R profit reached)")
+                            logger.info(f"  Entry: ₹{entry_price:.2f} | Current: ₹{current_price:.2f} | Profit: +₹{profit_distance:.2f} (>= ₹{risk_distance:.2f})")
+                            position['stop_loss'] = entry_price
+                            position['breakeven_moved'] = True
+                            stop_loss = entry_price  # Update for current check
+                            
+                            # Log to activity feed
+                            if self._activity_logger:
+                                try:
+                                    self._activity_logger.log_position_update(
+                                        symbol=symbol,
+                                        action='BREAKEVEN_STOP',
+                                        details=f"Stop moved to ₹{entry_price:.2f} (protecting profit)"
+                                    )
+                                except:
+                                    pass
+                    else:  # Short position
+                        profit_distance = entry_price - current_price
+                        if profit_distance >= risk_distance and stop_loss > entry_price:
+                            logger.info(f"🔒 [{symbol}] BREAKEVEN: Moving stop to entry (1R profit reached)")
+                            position['stop_loss'] = entry_price
+                            position['breakeven_moved'] = True
+                            stop_loss = entry_price
+                            
+                            if self._activity_logger:
+                                try:
+                                    self._activity_logger.log_position_update(
+                                        symbol=symbol,
+                                        action='BREAKEVEN_STOP',
+                                        details=f"Stop moved to ₹{entry_price:.2f} (protecting profit)"
+                                    )
+                                except:
+                                    pass
                 
                 # Check stop loss (instant detection)
-                if current_price <= stop_loss:
+                if direction == 'up' and current_price <= stop_loss:
+                    logger.warning(f"🛑 STOP LOSS HIT: {symbol} @ ₹{current_price:.2f}")
+                    self._close_position(symbol, position, current_price, 'STOP_LOSS')
+                    continue
+                elif direction == 'down' and current_price >= stop_loss:
                     logger.warning(f"🛑 STOP LOSS HIT: {symbol} @ ₹{current_price:.2f}")
                     self._close_position(symbol, position, current_price, 'STOP_LOSS')
                     continue
                 
                 # Check target (instant detection)
-                if current_price >= target:
+                if direction == 'up' and current_price >= target:
+                    logger.info(f"🎯 TARGET HIT: {symbol} @ ₹{current_price:.2f}")
+                    self._close_position(symbol, position, current_price, 'TARGET')
+                    continue
+                elif direction == 'down' and current_price <= target:
                     logger.info(f"🎯 TARGET HIT: {symbol} @ ₹{current_price:.2f}")
                     self._close_position(symbol, position, current_price, 'TARGET')
                     continue
@@ -2288,7 +2383,8 @@ class RealtimeBotEngine:
                         transaction_type=TransactionType.SELL,
                         order_type=OrderType.MARKET,
                         quantity=quantity,
-                        product_type=ProductType.INTRADAY
+                        product_type=ProductType.INTRADAY,
+                        strategy_tag=self.strategy.upper()  # 🚨 AUDIT FIX: SEBI compliance
                     )
                     
                     if exit_order:

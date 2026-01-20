@@ -63,7 +63,7 @@ class AlphaEnsembleStrategy:
         self.RISK_REWARD_RATIO = params.get('risk_reward', 2.5)  # 1:2.5 R:R
         self.ATR_MULTIPLIER_FOR_SL = 1.8
         self.MAXIMUM_SL_PERCENT = 0.6
-        self.RISK_PER_TRADE_PERCENT = params.get('position_size', 5.0)  # 5% per trade
+        self.RISK_PER_TRADE_PERCENT = params.get('position_size', 1.5)  # 1.5% per trade (AUDIT FIX: reduced from 5%)
         self.BREAKEVEN_RATIO = 1.0
         
         # SuperTrend Exit
@@ -157,7 +157,13 @@ class AlphaEnsembleStrategy:
         
         try:
             # Fetch 15-minute data for 200 EMA
-            ema_start_date = (datetime.strptime(start_date, "%Y-%m-%d") - timedelta(days=60)).strftime("%Y-%m-%d")
+            # Need 200 candles of 15-minute data: 200 * 15min = 3,000min = ~8 trading days
+            # Using 30 days buffer for weekends, holidays, and gaps
+            # NOTE: Angel Broking API has limitations on historical data:
+            #   - 15-minute data: typically 30-45 days lookback
+            #   - Using 30 days to stay within API limits
+            ema_start_date = (datetime.strptime(start_date, "%Y-%m-%d") - timedelta(days=30)).strftime("%Y-%m-%d")
+            logger.info(f"    📅 Fetching 15-min data from {ema_start_date} (30 days buffer for EMA-200)")
             data_15m = self.fetch_historical_data(
                 symbol, token, "FIFTEEN_MINUTE",
                 ema_start_date + " 09:15", end_date + " 15:30"

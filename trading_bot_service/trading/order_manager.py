@@ -84,7 +84,8 @@ class OrderManager:
         trigger_price: float = 0.0,
         duration: OrderDuration = OrderDuration.DAY,
         disclosed_quantity: int = 0,
-        client_local_ip: str = "127.0.0.1"
+        client_local_ip: str = "127.0.0.1",
+        strategy_tag: str = "UNKNOWN"
     ) -> Optional[Dict]:
         """
         Place a new order.
@@ -109,6 +110,10 @@ class OrderManager:
         try:
             url = f"{self.base_url}/rest/secure/angelbroking/order/v1/placeOrder"
             
+            # 🚨 AUDIT FIX: SEBI-compliant algo identifier
+            from datetime import datetime
+            algo_tag = f"ALGO_{strategy_tag}_{datetime.now().strftime('%Y%m%d')}"
+            
             payload = {
                 "variety": "NORMAL",
                 "tradingsymbol": symbol,
@@ -123,8 +128,11 @@ class OrderManager:
                 "stoploss": "0",
                 "quantity": str(quantity),
                 "triggerprice": str(trigger_price) if trigger_price > 0 else "0",
-                "disclosedquantity": str(disclosed_quantity)
+                "disclosedquantity": str(disclosed_quantity),
+                "ordertag": algo_tag  # SEBI compliance: unique algo identifier
             }
+            
+            logger.info(f"📋 SEBI Algo Tag: {algo_tag}")
             
             logger.info(f"Placing order: {transaction_type.value} {quantity} {symbol}")
             

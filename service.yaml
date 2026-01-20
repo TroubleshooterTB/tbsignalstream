@@ -7,11 +7,13 @@ spec:
     metadata:
       annotations:
         autoscaling.knative.dev/maxScale: '10'
+        # Force new revision with timestamp
+        client.knative.dev/user-image: gcr.io/tbsignalstream/trading-bot-service@sha256:5d81c29facc711c3bf37af60ea8c9f5d66f3ca2b32c2f2b7647a7720dac348c7
     spec:
       containerConcurrency: 80
       timeoutSeconds: 3600
       containers:
-      - image: gcr.io/tbsignalstream/trading-bot-service:latest
+      - image: gcr.io/tbsignalstream/trading-bot-service@sha256:5d81c29facc711c3bf37af60ea8c9f5d66f3ca2b32c2f2b7647a7720dac348c7
         resources:
           limits:
             memory: 2Gi

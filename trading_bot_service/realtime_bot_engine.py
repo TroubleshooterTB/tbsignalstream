@@ -126,8 +126,12 @@ class RealtimeBotEngine:
         self._mean_reversion = None  # 🔄 NEW: Mean reversion strategy for sideways markets (ADX < 20)
         
         # 🚨 AUDIT FIX: OTR Monitoring for SEBI Compliance
-        from otr_monitor import OrderToTradeRatioMonitor
-        self._otr_monitor = OrderToTradeRatioMonitor(otr_threshold=20.0)
+        try:
+            from otr_monitor import OrderToTradeRatioMonitor
+            self._otr_monitor = OrderToTradeRatioMonitor(otr_threshold=20.0)
+        except ImportError as e:
+            logger.warning(f"⚠️  OTR Monitor not available: {e}")
+            self._otr_monitor = None
         
         # NEW: Error handling and health monitoring
         self.error_handler = None  # Initialized after activity logger

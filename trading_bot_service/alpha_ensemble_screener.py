@@ -153,8 +153,13 @@ class AlphaEnsembleScreener:
             # CRITICAL: Use angelone.in domain (Angel Broking rebranded to Angel One)
             url = "https://apiconnect.angelone.in/rest/secure/angelbroking/historical/v1/getCandleData"
             
+            # JWT token is stored without Bearer prefix, add it here
+            auth_token = self.jwt_token
+            if not auth_token.startswith('Bearer '):
+                auth_token = f'Bearer {auth_token}'
+            
             headers = {
-                'Authorization': f'Bearer {self.jwt_token}',
+                'Authorization': auth_token,
                 'Content-Type': 'application/json',
                 'Accept': 'application/json',
                 'X-UserType': 'USER',

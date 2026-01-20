@@ -37,8 +37,13 @@ class HistoricalDataManager:
         
     def _get_headers(self) -> Dict:
         """Get API request headers"""
+        # JWT token is stored without Bearer prefix, so add it here
+        auth_token = self.jwt_token
+        if not auth_token.startswith('Bearer '):
+            auth_token = f'Bearer {auth_token}'
+            
         return {
-            'Authorization': f'Bearer {self.jwt_token}',
+            'Authorization': auth_token,
             'Content-Type': 'application/json',
             'Accept': 'application/json',
             'X-UserType': 'USER',

@@ -3121,8 +3121,13 @@ class RealtimeBotEngine:
                     # CRITICAL: Use angelone.in domain (Angel Broking rebranded to Angel One)
                     url = "https://apiconnect.angelone.in/rest/secure/angelbroking/historical/v1/getCandleData"
                     
+                    # CRITICAL FIX: Use JWT token (not feed token) with proper Bearer prefix
+                    auth_token = self.jwt_token
+                    if not auth_token.startswith('Bearer '):
+                        auth_token = f'Bearer {auth_token}'
+                    
                     headers = {
-                        'Authorization': f'Bearer {smart_api.getfeedToken()}',
+                        'Authorization': auth_token,
                         'Content-Type': 'application/json',
                         'Accept': 'application/json',
                         'X-UserType': 'USER',
@@ -3130,7 +3135,7 @@ class RealtimeBotEngine:
                         'X-ClientLocalIP': 'CLIENT_LOCAL_IP',
                         'X-ClientPublicIP': 'CLIENT_PUBLIC_IP',
                         'X-MACAddress': 'MAC_ADDRESS',
-                        'X-PrivateKey': smart_api.api_key
+                        'X-PrivateKey': self.api_key
                     }
                     
                     payload = {

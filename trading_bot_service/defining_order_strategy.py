@@ -105,8 +105,8 @@ class DefiningOrderStrategy:
         
         # ATR Parameters
         self.TREND_STRENGTH_PERCENT = 0.5
-        self.ATR_MULTIPLIER_FOR_SL = 1.4
-        self.LUNCH_HOUR_ATR_MULTIPLIER = 1.6  # Tighter for 13:00
+        self.ATR_MULTIPLIER_FOR_SL = 2.0  # 🚨 AUDIT OPTIMIZATION: 2.0x ATR (was 1.4x - reduces stop-outs)
+        self.LUNCH_HOUR_ATR_MULTIPLIER = 1.8  # 🚨 AUDIT OPTIMIZATION: 1.8x (was 1.6x)
         self.ATR_MIN_PERCENT = 0.15
         self.ATR_MAX_PERCENT = 5.0
         

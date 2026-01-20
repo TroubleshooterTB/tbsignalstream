@@ -61,7 +61,7 @@ class AlphaEnsembleStrategy:
         
         # ===== POSITION & RISK MANAGEMENT (USER-OPTIMIZED) =====
         self.RISK_REWARD_RATIO = params.get('risk_reward', 2.5)  # 1:2.5 R:R
-        self.ATR_MULTIPLIER_FOR_SL = 1.8
+        self.ATR_MULTIPLIER_FOR_SL = params.get('atr_multiplier', 2.2)  # 🚨 AUDIT OPTIMIZATION: 2.2x ATR (was 1.8x - reduces stop-outs)
         self.MAXIMUM_SL_PERCENT = 0.6
         self.RISK_PER_TRADE_PERCENT = params.get('position_size', 1.5)  # 1.5% per trade (AUDIT FIX: reduced from 5%)
         self.BREAKEVEN_RATIO = 1.0

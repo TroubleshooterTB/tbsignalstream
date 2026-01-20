@@ -675,6 +675,11 @@ class RealtimeBotEngine:
         """
         Use pre-validated tokens from NIFTY200_WATCHLIST instead of API calls.
         This avoids rate limits and ensures consistent token mapping.
+        
+        CRITICAL: Handles both symbol formats:
+        - Firestore stores: 'RELIANCE', 'TCS', 'HDFCBANK' (without -EQ)
+        - Watchlist has: 'RELIANCE-EQ', 'TCS-EQ', 'HDFCBANK-EQ' (with -EQ)
+        This method normalizes by trying both variants!
         """
         try:
             from nifty200_watchlist import NIFTY200_WATCHLIST
@@ -688,19 +693,46 @@ class RealtimeBotEngine:
         
         logger.info(f"📊 Loading tokens for {total} symbols from NIFTY200_WATCHLIST...")
         
-        # Create lookup dictionary from watchlist (both by symbol)
-        watchlist_lookup = {item['symbol']: item for item in NIFTY200_WATCHLIST}
+        # Create lookup dictionary from watchlist (by symbol with -EQ stripped for matching)
+        watchlist_lookup = {}
+        for item in NIFTY200_WATCHLIST:
+            # Store both with and without -EQ suffix for flexible matching
+            symbol_base = item['symbol'].replace('-EQ', '')
+            watchlist_lookup[symbol_base] = item
+            watchlist_lookup[item['symbol']] = item  # Also keep exact match
         
         for idx, symbol in enumerate(self.symbols, 1):
+            # Try exact match first
             if symbol in watchlist_lookup:
                 item = watchlist_lookup[symbol]
                 tokens[symbol] = {
                     'token': item['token'],
                     'exchange': item.get('exchange', 'NSE'),
-                    'trading_symbol': item.get('trading_symbol', symbol)
+                    'trading_symbol': item.get('trading_symbol', item['symbol'])
                 }
                 if idx <= 5 or idx % 10 == 0:  # Reduce log spam
                     logger.info(f"✅ [{idx}/{total}] Loaded {symbol}: {tokens[symbol]['token']}")
+            # Try with -EQ suffix
+            elif f"{symbol}-EQ" in watchlist_lookup:
+                item = watchlist_lookup[f"{symbol}-EQ"]
+                tokens[symbol] = {
+                    'token': item['token'],
+                    'exchange': item.get('exchange', 'NSE'),
+                    'trading_symbol': item.get('trading_symbol', item['symbol'])
+                }
+                if idx <= 5 or idx % 10 == 0:
+                    logger.info(f"✅ [{idx}/{total}] Loaded {symbol} (as {symbol}-EQ): {tokens[symbol]['token']}")
+            # Try without -EQ suffix (in case symbol has -EQ but we're looking for base)
+            elif symbol.replace('-EQ', '') in watchlist_lookup:
+                base_symbol = symbol.replace('-EQ', '')
+                item = watchlist_lookup[base_symbol]
+                tokens[symbol] = {
+                    'token': item['token'],
+                    'exchange': item.get('exchange', 'NSE'),
+                    'trading_symbol': item.get('trading_symbol', item['symbol'])
+                }
+                if idx <= 5 or idx % 10 == 0:
+                    logger.info(f"✅ [{idx}/{total}] Loaded {symbol} (base match): {tokens[symbol]['token']}")
             else:
                 missing_symbols.append(symbol)
                 # Try fallback tokens

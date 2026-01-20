@@ -3423,6 +3423,29 @@ class RealtimeBotEngine:
                 
         except Exception as e:
             logger.error(f"❌ Failed to check token expiry: {e}", exc_info=True)
+    
+    def _close_position_replay_helper(self, position, exit_price, signal_type, rationale):
+        """Helper method to close position during replay mode"""
+        ticker = position['ticker']
+        entry_price = position['entry_price']
+        quantity = position['quantity']
+        
+        pnl = (exit_price - entry_price) * quantity
+        pnl_pct = ((exit_price - entry_price) / entry_price) * 100
+        
+        # Create exit signal
+        signal_data = {
+            'user_id': self.user_id,
+            'ticker': ticker,
+            'action': 'SELL',
+            'signal_type': signal_type,
+            'price': exit_price,
+            'quantity': quantity,
+            'confidence': position.get('confidence', 0),
+            'rationale': rationale,
+            'pnl': pnl,
+            'pnl_pct': pnl_pct,
+            'entry_price': entry_price,
             'exit_price': exit_price,
             'holding_period_minutes': 0,
             'strategy': self.strategy,
@@ -3440,4 +3463,6 @@ class RealtimeBotEngine:
                 del self.open_positions[ticker]
         
         logger.info(f"   📴 Closed {ticker} @ ₹{exit_price:.2f} | P&L: ₹{pnl:,.2f} ({pnl_pct:+.2f}%)")
+        
+        return signal_data
 

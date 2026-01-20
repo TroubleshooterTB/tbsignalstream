@@ -1114,6 +1114,9 @@ class RealtimeBotEngine:
             if self.strategy == 'pattern':
                 logger.debug("📊 [DEBUG] Executing PATTERN strategy...")
                 self._execute_pattern_strategy()
+            elif self.strategy == 'defining':
+                logger.debug("📐 [DEBUG] Executing DEFINING ORDER strategy...")
+                self._execute_pattern_strategy()  # Defining Order uses same pattern detection
             elif self.strategy == 'ironclad':
                 logger.debug("🛡️  [DEBUG] Executing IRONCLAD strategy...")
                 self._execute_ironclad_strategy()
@@ -2532,8 +2535,22 @@ class RealtimeBotEngine:
                 token_info = self.symbol_tokens[symbol]
                 
                 try:
-                    # Fetch intraday 1-minute candles for the replay date
-                    params = {
+                    # Fetch intraday 1-minute candles using REST API (SDK doesn't work reliably for historical data)
+                    url = "https://apiconnect.angelbroking.com/rest/secure/angelbroking/historical/v1/getCandleData"
+                    
+                    headers = {
+                        'Authorization': f'Bearer {smart_api.getfeedToken()}',
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-UserType': 'USER',
+                        'X-SourceID': 'WEB',
+                        'X-ClientLocalIP': 'CLIENT_LOCAL_IP',
+                        'X-ClientPublicIP': 'CLIENT_PUBLIC_IP',
+                        'X-MACAddress': 'MAC_ADDRESS',
+                        'X-PrivateKey': smart_api.api_key
+                    }
+                    
+                    payload = {
                         "exchange": "NSE",
                         "symboltoken": token_info['token'],
                         "interval": "ONE_MINUTE",
@@ -2541,10 +2558,9 @@ class RealtimeBotEngine:
                         "todate": f"{self.replay_date} 15:30"
                     }
                     
-                    logger.info(f"  📊 Fetching {symbol} with token {token_info['token']} (type: {type(token_info['token']).__name__})")
-                    logger.info(f"  📋 API params: {params}")
-                    hist_data = smart_api.getCandleData(params)
-                    logger.info(f"  📥 API response: {hist_data}")
+                    logger.info(f"  📊 Fetching {symbol} via REST API...")
+                    response = requests.post(url, json=payload, headers=headers, timeout=30)
+                    hist_data = response.json()
                     
                     if hist_data and hist_data.get('status') and hist_data.get('data'):
                         candles = hist_data['data']

@@ -2542,6 +2542,9 @@ class RealtimeBotEngine:
         Runs every 0.5 seconds for instant detection.
         """
         try:
+            # Import firestore for position updates
+            from firebase_admin import firestore
+            
             # Position reconciliation every 60 seconds (120 iterations * 0.5s)
             if not hasattr(self, '_reconcile_counter'):
                 self._reconcile_counter = 0

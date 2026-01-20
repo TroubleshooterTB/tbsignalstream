@@ -43,11 +43,14 @@ type Alert = {
   ticker: string;
   price: number;
   confidence?: number;
-  signal_type: "Breakout" | "Momentum" | "Reversal" | "Profit Target" | "Stop Loss" | "EOD" | "Technical Exit";
+  signal_type: "Breakout" | "Mean Reversion" | "Alpha Ensemble" | "Defining Order" | "Ironclad" | "Momentum" | "Reversal" | "Profit Target" | "Stop Loss" | "EOD" | "Technical Exit" | "Double Top" | "Double Bottom" | "Bull Flag" | "Bear Flag" | "Triangle" | "Head & Shoulders";
   rationale: string;
   timestamp: Date;
   type: AlertType;
   pnl?: number;
+  regime?: "trending" | "sideways";
+  adx_value?: number;
+  entry_method?: "market" | "limit";
 };
 
 type OpenPosition = {
@@ -265,6 +268,9 @@ export function LiveAlertsDashboard() {
             rationale: data.rationale || 'Trading bot signal',
             timestamp: signalTime,
             type: data.type as AlertType,
+            regime: data.regime,  // ✅ NEW: Read market regime
+            adx_value: data.adx_value,  // ✅ NEW: Read ADX value
+            entry_method: data.entry_method  // ✅ NEW: Read entry method
           };
 
           addAlert(newAlert);
@@ -305,6 +311,16 @@ export function LiveAlertsDashboard() {
   const getBadgeVariant = (signal: Alert["signal_type"]) => {
     switch (signal) {
       case "Breakout": return "default";
+      case "Mean Reversion": return "secondary";
+      case "Alpha Ensemble": return "default";
+      case "Defining Order": return "default";
+      case "Ironclad": return "default";
+      case "Double Top": return "default";
+      case "Double Bottom": return "default";
+      case "Bull Flag": return "default";
+      case "Bear Flag": return "default";
+      case "Triangle": return "default";
+      case "Head & Shoulders": return "default";
       case "Momentum": return "secondary";
       case "Reversal": return "destructive";
       case "Profit Target": return "default";

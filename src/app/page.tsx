@@ -1,11 +1,13 @@
 // Forcing a rebuild to clear any potential caching issues.
-// Version: 2.3 - System Health Monitoring
+// Version: 2.4 - Frontend Compatibility + OTR + Regime Indicator
 "use client";
 
 import dynamic from "next/dynamic";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useEffect } from "react";
 import SystemHealthMonitor from "@/components/system-health-monitor";
+import { OTRComplianceWidget } from "@/components/otr-compliance-widget";
+import { RegimeIndicator } from "@/components/regime-indicator";
 
 // Dynamically import the dashboard to avoid SSR issues with Firebase
 const LiveAlertsDashboard = dynamic(
@@ -27,7 +29,7 @@ const LiveAlertsDashboard = dynamic(
 export default function Home() {
   // Force clear any stale data on mount
   useEffect(() => {
-    console.log('[App] Page mounted - v2.3 - HEALTH MONITORING');
+    console.log('[App] Page mounted - v2.4 - FRONTEND COMPATIBILITY FIX');
     // Clear any potential browser cache
     if (typeof window !== 'undefined') {
       localStorage.removeItem('cachedSignals');
@@ -40,7 +42,20 @@ export default function Home() {
   return (
     <>
       <SystemHealthMonitor />
-      <LiveAlertsDashboard />
+      <div className="p-4 space-y-4">
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-bold">Trading Dashboard</h1>
+          <RegimeIndicator />
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="md:col-span-2">
+            <LiveAlertsDashboard />
+          </div>
+          <div>
+            <OTRComplianceWidget />
+          </div>
+        </div>
+      </div>
     </>
   );
 }

@@ -2292,11 +2292,43 @@ class RealtimeBotEngine:
             from datetime import datetime
             
             db = firestore.client()
+            
+            # 🎯 EXTRACT ACTUAL SIGNAL TYPE FROM PATTERN
+            # Map internal pattern names to user-friendly signal types
+            signal_type = 'Breakout'  # Default
+            if 'pattern_details' in locals() and isinstance(pattern_details, dict):
+                pattern_name = pattern_details.get('pattern', 'Breakout')
+                if pattern_name == 'MEAN_REVERSION':
+                    signal_type = 'Mean Reversion'
+                elif 'Alpha-Ensemble' in reason or 'alpha_ensemble' in reason.lower():
+                    signal_type = 'Alpha Ensemble'
+                elif 'Defining Order' in reason or 'defining' in reason.lower():
+                    signal_type = 'Defining Order'
+                elif 'Ironclad' in reason:
+                    signal_type = 'Ironclad'
+                else:
+                    # Extract pattern from reason (e.g., "Pattern: Double Top")
+                    if 'Pattern:' in reason:
+                        extracted = reason.split('Pattern: ')[-1].split(' |')[0].strip()
+                        if extracted:
+                            signal_type = extracted
+            
+            # 🌊 DETERMINE MARKET REGIME
+            current_adx = 25  # Default
+            if symbol in candle_data_copy:
+                try:
+                    df_temp = candle_data_copy[symbol]
+                    if 'adx' in df_temp.columns:
+                        current_adx = float(df_temp['adx'].iloc[-1])
+                except:
+                    pass
+            regime = 'sideways' if current_adx < 20 else 'trending'
+            
             signal_data = {
                 'user_id': self.user_id,
                 'symbol': symbol,
                 'type': 'BUY' if direction == 'up' else 'SELL',
-                'signal_type': 'Breakout',  # Could be enhanced with actual pattern type
+                'signal_type': signal_type,  # ✅ FIXED: Dynamic signal type
                 'price': entry_price,
                 'stop_loss': stop_loss,
                 'target': target,
@@ -2307,7 +2339,13 @@ class RealtimeBotEngine:
                 'mode': self.trading_mode,
                 'status': 'open',
                 'replay_mode': self.is_replay_mode,  # Phase 3: Mark replay signals
-                'replay_date': self.replay_date if self.is_replay_mode else None
+                'replay_date': self.replay_date if self.is_replay_mode else None,
+                # ✅ NEW: Enhanced tracking fields
+                'regime': regime,
+                'adx_value': round(current_adx, 2),
+                'breakeven_moved': False,
+                'trailing_active': False,
+                'entry_method': 'limit' if signal_type == 'Mean Reversion' else 'market'
             }
             if ml_signal_id:
                 signal_data['ml_signal_id'] = ml_signal_id
@@ -2491,10 +2529,41 @@ class RealtimeBotEngine:
                         if profit_distance >= risk_distance and stop_loss < entry_price:
                             logger.info(f"🔒 [{symbol}] BREAKEVEN: Moving stop to entry (1R profit reached)")
                             logger.info(f"  Entry: ₹{entry_price:.2f} | Current: ₹{current_price:.2f} | Profit: +₹{profit_distance:.2f} (>= ₹{risk_distance:.2f})")
+                            old_stop = stop_loss
                             position['stop_loss'] = entry_price
                             position['breakeven_moved'] = True
                             position['highest_price'] = current_price  # Initialize for trailing stop
                             stop_loss = entry_price  # Update for current check
+                            
+                            # ✅ NEW: Write breakeven update to Firestore
+                            try:
+                                db_fs = firestore.client()
+                                
+                                # Write to position_updates collection
+                                db_fs.collection('position_updates').add({
+                                    'user_id': self.user_id,
+                                    'symbol': symbol,
+                                    'update_type': 'BREAKEVEN_STOP',
+                                    'old_stop_loss': old_stop,
+                                    'new_stop_loss': entry_price,
+                                    'current_price': current_price,
+                                    'profit_locked': 0,  # Risk eliminated
+                                    'reason': 'Profit reached 1R - moving stop to entry',
+                                    'timestamp': firestore.SERVER_TIMESTAMP
+                                })
+                                
+                                # Update original signal document
+                                signals_ref = db_fs.collection('trading_signals').where('symbol', '==', symbol).where('status', '==', 'open').limit(1).stream()
+                                for sig in signals_ref:
+                                    sig.reference.update({
+                                        'stop_loss': entry_price,
+                                        'breakeven_moved': True,
+                                        'last_stop_update': firestore.SERVER_TIMESTAMP
+                                    })
+                                
+                                logger.info(f"✅ Breakeven update written to Firestore for {symbol}")
+                            except Exception as fs_err:
+                                logger.error(f"Failed to write breakeven update: {fs_err}")
                             
                             # Log to activity feed
                             if self._activity_logger:
@@ -2510,10 +2579,39 @@ class RealtimeBotEngine:
                         profit_distance = entry_price - current_price
                         if profit_distance >= risk_distance and stop_loss > entry_price:
                             logger.info(f"🔒 [{symbol}] BREAKEVEN: Moving stop to entry (1R profit reached)")
+                            old_stop = stop_loss
                             position['stop_loss'] = entry_price
                             position['breakeven_moved'] = True
                             position['lowest_price'] = current_price  # Initialize for trailing stop
                             stop_loss = entry_price
+                            
+                            # ✅ NEW: Write breakeven update to Firestore
+                            try:
+                                db_fs = firestore.client()
+                                
+                                db_fs.collection('position_updates').add({
+                                    'user_id': self.user_id,
+                                    'symbol': symbol,
+                                    'update_type': 'BREAKEVEN_STOP',
+                                    'old_stop_loss': old_stop,
+                                    'new_stop_loss': entry_price,
+                                    'current_price': current_price,
+                                    'profit_locked': 0,
+                                    'reason': 'Profit reached 1R - moving stop to entry',
+                                    'timestamp': firestore.SERVER_TIMESTAMP
+                                })
+                                
+                                signals_ref = db_fs.collection('trading_signals').where('symbol', '==', symbol).where('status', '==', 'open').limit(1).stream()
+                                for sig in signals_ref:
+                                    sig.reference.update({
+                                        'stop_loss': entry_price,
+                                        'breakeven_moved': True,
+                                        'last_stop_update': firestore.SERVER_TIMESTAMP
+                                    })
+                                
+                                logger.info(f"✅ Breakeven update written to Firestore for {symbol}")
+                            except Exception as fs_err:
+                                logger.error(f"Failed to write breakeven update: {fs_err}")
                             
                             if self._activity_logger:
                                 try:
@@ -2542,8 +2640,38 @@ class RealtimeBotEngine:
                         if trailing_stop > stop_loss:
                             logger.info(f"📈 [{symbol}] TRAILING STOP: ₹{stop_loss:.2f} → ₹{trailing_stop:.2f}")
                             logger.info(f"  Highest: ₹{highest_price:.2f} | Locking: 50% of profit above entry")
+                            old_stop = stop_loss
                             position['stop_loss'] = trailing_stop
                             stop_loss = trailing_stop
+                            
+                            # ✅ NEW: Write trailing stop update to Firestore
+                            try:
+                                db_fs = firestore.client()
+                                profit_locked = (trailing_stop - entry_price) * position.get('quantity', 0)
+                                
+                                db_fs.collection('position_updates').add({
+                                    'user_id': self.user_id,
+                                    'symbol': symbol,
+                                    'update_type': 'TRAILING_STOP',
+                                    'old_stop_loss': old_stop,
+                                    'new_stop_loss': trailing_stop,
+                                    'current_price': current_price,
+                                    'profit_locked': round(profit_locked, 2),
+                                    'reason': f'Trailing 50% of profit above entry (₹{highest_price:.2f} peak)',
+                                    'timestamp': firestore.SERVER_TIMESTAMP
+                                })
+                                
+                                signals_ref = db_fs.collection('trading_signals').where('symbol', '==', symbol).where('status', '==', 'open').limit(1).stream()
+                                for sig in signals_ref:
+                                    sig.reference.update({
+                                        'stop_loss': trailing_stop,
+                                        'trailing_active': True,
+                                        'last_stop_update': firestore.SERVER_TIMESTAMP
+                                    })
+                                
+                                logger.info(f"✅ Trailing stop update written to Firestore for {symbol}")
+                            except Exception as fs_err:
+                                logger.error(f"Failed to write trailing stop update: {fs_err}")
                             
                             if self._activity_logger:
                                 try:
@@ -2568,8 +2696,38 @@ class RealtimeBotEngine:
                         
                         if trailing_stop < stop_loss:
                             logger.info(f"📈 [{symbol}] TRAILING STOP: ₹{stop_loss:.2f} → ₹{trailing_stop:.2f}")
+                            old_stop = stop_loss
                             position['stop_loss'] = trailing_stop
                             stop_loss = trailing_stop
+                            
+                            # ✅ NEW: Write trailing stop update to Firestore
+                            try:
+                                db_fs = firestore.client()
+                                profit_locked = (entry_price - trailing_stop) * position.get('quantity', 0)
+                                
+                                db_fs.collection('position_updates').add({
+                                    'user_id': self.user_id,
+                                    'symbol': symbol,
+                                    'update_type': 'TRAILING_STOP',
+                                    'old_stop_loss': old_stop,
+                                    'new_stop_loss': trailing_stop,
+                                    'current_price': current_price,
+                                    'profit_locked': round(profit_locked, 2),
+                                    'reason': f'Trailing 50% of profit above entry (₹{lowest_price:.2f} low)',
+                                    'timestamp': firestore.SERVER_TIMESTAMP
+                                })
+                                
+                                signals_ref = db_fs.collection('trading_signals').where('symbol', '==', symbol).where('status', '==', 'open').limit(1).stream()
+                                for sig in signals_ref:
+                                    sig.reference.update({
+                                        'stop_loss': trailing_stop,
+                                        'trailing_active': True,
+                                        'last_stop_update': firestore.SERVER_TIMESTAMP
+                                    })
+                                
+                                logger.info(f"✅ Trailing stop update written to Firestore for {symbol}")
+                            except Exception as fs_err:
+                                logger.error(f"Failed to write trailing stop update: {fs_err}")
                             
                             if self._activity_logger:
                                 try:

@@ -51,7 +51,8 @@ class RealtimeBotEngine:
         if isinstance(symbols, str):
             logger.info(f"🔄 Converting universe '{symbols}' to symbol list...")
             from nifty200_watchlist import NIFTY200_WATCHLIST
-            all_symbols = [stock['symbol'] for stock in NIFTY200_WATCHLIST]
+            # Extract symbols WITHOUT -EQ suffix for consistency with Firestore
+            all_symbols = [stock['symbol'].replace('-EQ', '') for stock in NIFTY200_WATCHLIST]
             
             if symbols == 'NIFTY50':
                 self.symbols = all_symbols[:50]
@@ -3085,7 +3086,8 @@ class RealtimeBotEngine:
             if isinstance(self.symbols, str):
                 logger.info(f"🔄 Converting universe '{self.symbols}' to symbol list...")
                 from nifty200_watchlist import NIFTY200_WATCHLIST
-                all_symbols = [stock['symbol'] for stock in NIFTY200_WATCHLIST]
+                # Extract symbols WITHOUT -EQ suffix for consistency with Firestore
+                all_symbols = [stock['symbol'].replace('-EQ', '') for stock in NIFTY200_WATCHLIST]
                 
                 if self.symbols == 'NIFTY50':
                     self.symbols = all_symbols[:50]

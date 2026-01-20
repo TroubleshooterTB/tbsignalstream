@@ -1,12 +1,50 @@
+# Python cache and compiled files
 __pycache__/
 *.pyc
 *.pyo
-.git/
+*.pyd
+.Python
+
+# Virtual environments
 .venv/
 venv/
-*.log
+ENV/
+env/
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
 .DS_Store
-*.csv
+Thumbs.db
+
+# Logs
+*.log
+
+# Test files
+test_*.py
+*_test.py
+
+# Documentation (keep requirements.txt)
 README*.md
 *.md
 !requirements.txt
+
+# Data files
+*.csv
+*.xlsx
+*.json
+!firestore-key.json
+
+# Build artifacts
+dist/
+build/
+*.egg-info/

@@ -135,7 +135,7 @@ def get_angel_tokens(symbols: List[str], client_code: str, password: str, totp_c
         return {}
     
     # Use REST API to search for symbols
-    search_url = "https://apiconnect.angelbroking.com/rest/secure/angelbroking/order/v1/searchScrip"
+    search_url = "https://apiconnect.angelone.in/rest/secure/angelbroking/order/v1/searchScrip"
     
     headers = {
         'Authorization': f'Bearer {jwt_token}',

@@ -29,7 +29,7 @@ TOTP_SECRET = "OVVDE6DFNRPXMQT3FD5CDZJNCE"
 def get_jwt_token(api_key: str, client_code: str, password: str, totp_code: str) -> str:
     """Generate JWT token for Angel One API"""
     
-    url = "https://apiconnect.angelbroking.com/rest/auth/angelbroking/user/v1/loginByPassword"
+    url = "https://apiconnect.angelone.in/rest/auth/angelbroking/user/v1/loginByPassword"
     
     payload = {
         "clientcode": client_code,
@@ -204,7 +204,7 @@ def fetch_historical_data(symbol: str, token: str, from_date: str, to_date: str,
                          jwt_token: str, api_key: str) -> pd.DataFrame:
     """Fetch 5-minute historical data from Angel One API"""
     
-    url = "https://apiconnect.angelbroking.com/rest/secure/angelbroking/historical/v1/getCandleData"
+    url = "https://apiconnect.angelone.in/rest/secure/angelbroking/historical/v1/getCandleData"
     
     headers = {
         "Authorization": f"Bearer {jwt_token}",

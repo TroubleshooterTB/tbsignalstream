@@ -117,7 +117,7 @@ class Nifty200Manager:
         Returns token and trading symbol
         """
         try:
-            url = "https://apiconnect.angelbroking.com/rest/secure/angelbroking/order/v1/searchScrip"
+            url = "https://apiconnect.angelone.in/rest/secure/angelbroking/order/v1/searchScrip"
             
             headers = {
                 'Authorization': f'Bearer {self.jwt_token}',
@@ -265,7 +265,7 @@ def main():
     api_key = input("API Key: ").strip()
     
     # Authenticate
-    url = "https://apiconnect.angelbroking.com/rest/auth/angelbroking/user/v1/loginByPassword"
+    url = "https://apiconnect.angelone.in/rest/auth/angelbroking/user/v1/loginByPassword"
     
     headers = {
         'Content-Type': 'application/json',

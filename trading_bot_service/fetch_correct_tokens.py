@@ -10,7 +10,7 @@ import json
 
 def generate_jwt_token(client_code: str, password: str, totp: str, api_key: str) -> str:
     """Generate JWT token for Angel One API"""
-    url = "https://apiconnect.angelbroking.com/rest/auth/angelbroking/user/v1/loginByPassword"
+    url = "https://apiconnect.angelone.in/rest/auth/angelbroking/user/v1/loginByPassword"
     
     headers = {
         'Content-Type': 'application/json',
@@ -41,7 +41,7 @@ def generate_jwt_token(client_code: str, password: str, totp: str, api_key: str)
 
 def search_symbol(symbol: str, jwt_token: str, api_key: str) -> dict:
     """Search for symbol and get its token"""
-    url = "https://apiconnect.angelbroking.com/rest/secure/angelbroking/order/v1/searchScrip"
+    url = "https://apiconnect.angelone.in/rest/secure/angelbroking/order/v1/searchScrip"
     
     headers = {
         'Authorization': f'Bearer {jwt_token}',

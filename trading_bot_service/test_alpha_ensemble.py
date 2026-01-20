@@ -19,7 +19,7 @@ def generate_jwt_token(client_code: str, password: str, totp: str, api_key: str)
     """Generate JWT token for Angel One API"""
     import requests
     
-    url = "https://apiconnect.angelbroking.com/rest/auth/angelbroking/user/v1/loginByPassword"
+    url = "https://apiconnect.angelone.in/rest/auth/angelbroking/user/v1/loginByPassword"
     
     headers = {
         'Content-Type': 'application/json',

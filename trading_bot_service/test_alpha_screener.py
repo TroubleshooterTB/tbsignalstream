@@ -631,7 +631,7 @@ def main():
     
     # Authenticate
     import requests
-    url = "https://apiconnect.angelbroking.com/rest/auth/angelbroking/user/v1/loginByPassword"
+    url = "https://apiconnect.angelone.in/rest/auth/angelbroking/user/v1/loginByPassword"
     
     headers = {
         'Content-Type': 'application/json',

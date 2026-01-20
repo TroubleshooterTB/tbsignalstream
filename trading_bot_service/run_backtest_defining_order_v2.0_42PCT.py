@@ -93,7 +93,7 @@ class DefiningOrderStrategy:
                             from_date: str, to_date: str) -> pd.DataFrame:
         """Fetch historical candle data from Angel One"""
         try:
-            url = "https://apiconnect.angelbroking.com/rest/secure/angelbroking/historical/v1/getCandleData"
+            url = "https://apiconnect.angelone.in/rest/secure/angelbroking/historical/v1/getCandleData"
             
             headers = {
                 'Authorization': f'Bearer {self.jwt_token}',
@@ -872,7 +872,7 @@ class DefiningOrderStrategy:
 def generate_jwt_token(api_key: str, client_code: str, password: str, totp: str) -> Optional[str]:
     """Generate JWT token for Angel One API"""
     try:
-        url = "https://apiconnect.angelbroking.com/rest/auth/angelbroking/user/v1/loginByPassword"
+        url = "https://apiconnect.angelone.in/rest/auth/angelbroking/user/v1/loginByPassword"
         
         payload = {
             "clientcode": client_code,

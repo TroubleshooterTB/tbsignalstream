@@ -53,15 +53,16 @@ class BotActivityLogger:
             if self.db:
                 self.collection = self.db.collection('bot_activity')
                 self.firestore_available = True
+                logger.info(f"✅ BotActivityLogger initialized WITH Firestore for user {user_id}")
             else:
-                logger.warning(f"⚠️ BotActivityLogger initialized without Firestore - logging disabled for user {user_id}")
+                logger.warning(f"⚠️  BotActivityLogger initialized WITHOUT Firestore - logging to console only for user {user_id}")
         except Exception as e:
-            logger.error(f"❌ Failed to initialize bot activity logger: {e}")
+            logger.error(f"❌ Failed to initialize bot activity logger collection: {e}")
             self.firestore_available = False
         
         self.verbose = verbose_mode  # User can toggle this
         self._last_log_time = {}  # Throttle frequent logs
-        logger.info(f"BotActivityLogger initialized for user: {user_id} (Verbose: {verbose_mode})")
+        logger.info(f"BotActivityLogger initialized for user: {user_id} (Verbose: {verbose_mode}, Firestore: {self.firestore_available})")
     
     def set_verbose_mode(self, enabled: bool):
         """Enable or disable verbose logging"""

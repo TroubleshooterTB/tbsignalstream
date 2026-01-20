@@ -152,6 +152,9 @@ class RealtimeBotEngine:
         try:
             self.is_running = True
             
+            # CRITICAL: Check if tokens are expired before starting
+            self._check_and_refresh_tokens()
+            
             # 🔄 REPLAY MODE: Use simulation instead of real-time trading
             if self.is_replay_mode:
                 logger.info("="*80)
@@ -668,29 +671,45 @@ class RealtimeBotEngine:
         Use pre-validated tokens from NIFTY200_WATCHLIST instead of API calls.
         This avoids rate limits and ensures consistent token mapping.
         """
-        from nifty200_watchlist import NIFTY200_WATCHLIST
-        import time
+        try:
+            from nifty200_watchlist import NIFTY200_WATCHLIST
+        except ImportError:
+            logger.error("❌ Failed to import NIFTY200_WATCHLIST - using fallback tokens")
+            return self._get_fallback_tokens()
         
         tokens = {}
         total = len(self.symbols)
+        missing_symbols = []
         
         logger.info(f"📊 Loading tokens for {total} symbols from NIFTY200_WATCHLIST...")
         
-        # Create lookup dictionary from watchlist
-        watchlist_lookup = {item['symbol']: item['token'] for item in NIFTY200_WATCHLIST}
+        # Create lookup dictionary from watchlist (both by symbol)
+        watchlist_lookup = {item['symbol']: item for item in NIFTY200_WATCHLIST}
         
         for idx, symbol in enumerate(self.symbols, 1):
             if symbol in watchlist_lookup:
+                item = watchlist_lookup[symbol]
                 tokens[symbol] = {
-                    'token': watchlist_lookup[symbol],
-                    'exchange': 'NSE',
-                    'trading_symbol': symbol
+                    'token': item['token'],
+                    'exchange': item.get('exchange', 'NSE'),
+                    'trading_symbol': item.get('trading_symbol', symbol)
                 }
-                logger.info(f"✅ [{idx}/{total}] Loaded {symbol}: {tokens[symbol]['token']}")
+                if idx <= 5 or idx % 10 == 0:  # Reduce log spam
+                    logger.info(f"✅ [{idx}/{total}] Loaded {symbol}: {tokens[symbol]['token']}")
             else:
-                logger.warning(f"⚠️  [{idx}/{total}] Symbol {symbol} not found in watchlist")
+                missing_symbols.append(symbol)
+                # Try fallback tokens
+                fallback = self._get_fallback_tokens()
+                if symbol in fallback:
+                    tokens[symbol] = fallback[symbol]
+                    logger.info(f"✅ [{idx}/{total}] {symbol} from fallback: {tokens[symbol]['token']}")
+                else:
+                    logger.warning(f"⚠️  [{idx}/{total}] Symbol {symbol} not available - skipping")
         
-        logger.info(f"✅ Successfully loaded {len(tokens)}/{total} symbol tokens from watchlist")
+        if missing_symbols:
+            logger.warning(f"⚠️  {len(missing_symbols)} symbols not in watchlist: {', '.join(missing_symbols[:10])}{'...' if len(missing_symbols) > 10 else ''}")
+        
+        logger.info(f"✅ Successfully loaded {len(tokens)}/{total} symbol tokens")
         return tokens
     
     def _get_fallback_tokens(self) -> Dict:
@@ -3291,6 +3310,119 @@ class RealtimeBotEngine:
             'pnl': pnl,
             'pnl_pct': pnl_pct,
             'entry_price': entry_price,
+        }
+        
+        return signal_data
+    
+    def _check_and_refresh_tokens(self):
+        """
+        Check if Angel One tokens are expired and automatically refresh them.
+        Tokens expire after 24 hours and need daily regeneration.
+        """
+        try:
+            import pyotp
+            from SmartApi import SmartConnect
+            from datetime import datetime, timedelta
+            
+            # Check if we have token_generated_at timestamp
+            if self.db is None:
+                logger.warning("⚠️  No Firestore client - cannot check token expiry, assuming tokens are fresh")
+                return
+            
+            try:
+                creds_doc = self.db.collection('angel_one_credentials').document(self.user_id).get()
+                if not creds_doc.exists:
+                    logger.error("❌ No credentials found in Firestore")
+                    return
+                
+                creds_data = creds_doc.to_dict()
+                token_time_str = creds_data.get('token_generated_at')
+                
+                if not token_time_str:
+                    logger.warning("⚠️  No token_generated_at timestamp - assuming tokens need refresh")
+                    needs_refresh = True
+                else:
+                    # Parse timestamp
+                    token_time = datetime.fromisoformat(token_time_str.replace('Z', '+00:00'))
+                    token_age = datetime.now() - token_time.replace(tzinfo=None)
+                    
+                    # Tokens expire after 24 hours, refresh if older than 23 hours (safety margin)
+                    needs_refresh = token_age > timedelta(hours=23)
+                    
+                    if needs_refresh:
+                        logger.warning(f"⚠️  Tokens expired (age: {token_age}) - refreshing...")
+                    else:
+                        logger.info(f"✅ Tokens still valid (age: {token_age})")
+                        return
+                
+                # Refresh tokens
+                if needs_refresh:
+                    logger.info("🔄 Generating fresh Angel One tokens...")
+                    
+                    # Get credentials
+                    api_key = creds_data.get('api_key')
+                    client_code = creds_data.get('client_code')
+                    password = creds_data.get('password')
+                    totp_secret = creds_data.get('totp_secret')
+                    
+                    if not all([api_key, client_code, password, totp_secret]):
+                        logger.error("❌ Missing credentials for token refresh")
+                        return
+                    
+                    # Generate TOTP
+                    totp = pyotp.TOTP(totp_secret)
+                    totp_token = totp.now()
+                    
+                    # Login
+                    smart_api = SmartConnect(api_key=api_key)
+                    login_data = smart_api.generateSession(
+                        clientCode=client_code,
+                        password=password,
+                        totp=totp_token
+                    )
+                    
+                    if not login_data or login_data.get('status') == False:
+                        error_msg = login_data.get('message', 'Unknown error') if login_data else 'No response'
+                        logger.error(f"❌ Token refresh failed: {error_msg}")
+                        return
+                    
+                    # Extract new tokens
+                    jwt_token = login_data['data']['jwtToken']
+                    refresh_token = login_data['data']['refreshToken']
+                    feed_token = login_data['data']['feedToken']
+                    
+                    # Update credentials in Firestore
+                    self.db.collection('angel_one_credentials').document(self.user_id).update({
+                        'jwt_token': jwt_token,
+                        'refresh_token': refresh_token,
+                        'feed_token': feed_token,
+                        'token_generated_at': datetime.now().isoformat(),
+                        'last_refresh': datetime.now().isoformat()
+                    })
+                    
+                    # Update local credentials
+                    self.jwt_token = jwt_token
+                    self.feed_token = feed_token
+                    self.credentials['jwt_token'] = jwt_token
+                    self.credentials['feed_token'] = feed_token
+                    
+                    logger.info("✅ Tokens refreshed successfully")
+                    
+                    # Log to activity feed
+                    if self._activity_logger:
+                        self._activity_logger.log_activity(
+                            message="Angel One tokens auto-refreshed (24hr expiry)",
+                            level="INFO",
+                            symbol="SYSTEM",
+                            details={'totp_used': totp_token}
+                        )
+                    
+            except Exception as e:
+                logger.error(f"❌ Token refresh check failed: {e}", exc_info=True)
+                logger.warning("⚠️  Continuing with existing tokens...")
+                
+        except Exception as e:
+            logger.error(f"❌ Failed to check token expiry: {e}", exc_info=True)
             'exit_price': exit_price,
             'holding_period_minutes': 0,
             'strategy': self.strategy,

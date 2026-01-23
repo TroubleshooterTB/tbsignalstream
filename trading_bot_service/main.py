@@ -81,29 +81,31 @@ active_bots: Dict[str, 'TradingBotInstance'] = {}
 
 def _get_symbols_from_universe(universe: str) -> list:
     """Get symbol list based on universe selection"""
-    # Import NIFTY200 watchlist (contains all 200 symbols with tokens)
-    from nifty200_watchlist import NIFTY200_WATCHLIST
-    
-    # Convert watchlist format to symbol strings
-    all_symbols = [stock['symbol'] for stock in NIFTY200_WATCHLIST]
+    # Nifty 50 symbols (default)
+    nifty50 = [
+        'RELIANCE-EQ', 'TCS-EQ', 'HDFCBANK-EQ', 'INFY-EQ', 'ICICIBANK-EQ',
+        'HINDUNILVR-EQ', 'ITC-EQ', 'BHARTIARTL-EQ', 'KOTAKBANK-EQ', 'BAJFINANCE-EQ',
+        'LT-EQ', 'ASIANPAINT-EQ', 'AXISBANK-EQ', 'HCLTECH-EQ', 'MARUTI-EQ',
+        'SUNPHARMA-EQ', 'TITAN-EQ', 'NESTLEIND-EQ', 'ULTRACEMCO-EQ', 'WIPRO-EQ',
+        'NTPC-EQ', 'TATAMOTORS-EQ', 'BAJAJFINSV-EQ', 'TATASTEEL-EQ', 'TECHM-EQ',
+        'ADANIENT-EQ', 'ONGC-EQ', 'COALINDIA-EQ', 'HINDALCO-EQ', 'INDUSINDBK-EQ',
+        'EICHERMOT-EQ', 'DIVISLAB-EQ', 'BRITANNIA-EQ', 'DRREDDY-EQ', 'APOLLOHOSP-EQ',
+        'CIPLA-EQ', 'GRASIM-EQ', 'HEROMOTOCO-EQ', 'ADANIPORTS-EQ', 'HINDZINC-EQ',
+        'M&M-EQ', 'BPCL-EQ', 'TRENT-EQ', 'ADANIGREEN-EQ', 'LTIM-EQ',
+        'SBIN-EQ', 'POWERGRID-EQ', 'JSWSTEEL-EQ', 'SHRIRAMFIN-EQ'
+    ]
     
     if universe == 'NIFTY50':
-        symbols = all_symbols[:50]
-        logger.info(f"📊 Using NIFTY 50 universe: {len(symbols)} symbols")
-        return symbols
+        return nifty50
     elif universe == 'NIFTY100':
-        symbols = all_symbols[:100]
-        logger.info(f"📊 Using NIFTY 100 universe: {len(symbols)} symbols")
-        return symbols
+        # For now, return Nifty 50 (can be expanded later)
+        return nifty50
     elif universe == 'NIFTY200':
-        symbols = all_symbols  # All 200 symbols
-        logger.info(f"📊 Using NIFTY 200 universe: {len(symbols)} symbols")
-        return symbols
+        # For now, return Nifty 50 (can be expanded later)  
+        return nifty50
     else:
         # Default to Nifty 50
-        symbols = all_symbols[:50]
-        logger.warning(f"⚠️  Invalid universe '{universe}', defaulting to NIFTY 50: {len(symbols)} symbols")
-        return symbols
+        return nifty50
 
 
 class TradingBotInstance:
@@ -191,10 +193,9 @@ class TradingBotInstance:
 def system_status():
     """System status endpoint for dashboard error reporting"""
     global firestore_error
-    from datetime import datetime, timezone
     
     status = {
-        'timestamp': datetime.now(timezone.utc).isoformat(),
+        'timestamp': datetime.now().isoformat(),
         'backend_operational': True,
         'firestore_connected': db is not None,
         'errors': [],
@@ -307,13 +308,13 @@ def check_credentials():
         
         all_set = all(status == 'SET' for status in credentials_status.values())
         
-        from datetime import datetime, timezone
+        from datetime import datetime
         
         return jsonify({
             'status': 'OK' if all_set else 'INCOMPLETE',
             'credentials': credentials_status,
             'api_key_preview': api_key_preview,
-            'timestamp': datetime.now(timezone.utc).isoformat()
+            'timestamp': datetime.utcnow().isoformat()
         }), 200
         
     except Exception as e:

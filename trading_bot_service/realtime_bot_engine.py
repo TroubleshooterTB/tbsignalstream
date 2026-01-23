@@ -8,7 +8,7 @@ import time
 import threading
 import asyncio
 import requests  # For REST API calls (historical data, replay mode)
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time as datetime_time
 from typing import Dict, List, Callable, Optional
 import pandas as pd
 import numpy as np
@@ -1230,7 +1230,7 @@ class RealtimeBotEngine:
             import pytz
             ist = pytz.timezone('Asia/Kolkata')
             current_time = datetime.now(ist).time()
-            if time(12, 0) <= current_time <= time(14, 30):
+            if datetime_time(12, 0) <= current_time <= datetime_time(14, 30):
                 logger.debug("⏸️  LIQUIDITY FILTER: Skipping 12:00-14:30 (midday U-shape dip - 12.5% WR trap)")
                 return
             

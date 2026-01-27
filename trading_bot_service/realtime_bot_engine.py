@@ -868,28 +868,27 @@ class RealtimeBotEngine:
         )
         
         # Calculate time range
-        # CRITICAL OPTIMIZATION: Fetch ONLY last 60 minutes to avoid rate limits
-        # 60 candles is MORE than enough for all required indicators (RSI, MACD, ATR, ADX need max 28 candles)
-        # This reduces API calls from 375 to 60 (6X reduction) and completes in ~60 seconds instead of 375 seconds
+        # CRITICAL: Fetch at least 200 candles for EMA200 calculation
+        # Alpha-Ensemble strategy requires 200-period EMA for trend determination
         if now < market_open_time:
-            # Before market open: Fetch yesterday's LAST HOUR of trading (2:30 PM - 3:30 PM)
+            # Before market open: Fetch yesterday's FULL DAY (9:15 AM - 3:30 PM = 375 candles)
             yesterday = now - timedelta(days=1)
             # Handle weekends: if today is Monday, fetch from Friday
             while yesterday.weekday() >= 5:  # Saturday=5, Sunday=6
                 yesterday -= timedelta(days=1)
             to_date = yesterday.replace(hour=15, minute=30, second=0, microsecond=0)  # Yesterday 3:30 PM
-            from_date = yesterday.replace(hour=14, minute=30, second=0, microsecond=0)  # Yesterday 2:30 PM (LAST 60 MIN)
-            logger.info(f"📊 Fetching last 60 minutes of previous session: {from_date.strftime('%Y-%m-%d %H:%M')} to {to_date.strftime('%Y-%m-%d %H:%M')}")
-            logger.info(f"📊 Expected ~60 candles for INSTANT signal generation (avoids rate limits)!")
+            from_date = yesterday.replace(hour=9, minute=15, second=0, microsecond=0)  # Yesterday 9:15 AM (FULL DAY)
+            logger.info(f"📊 Fetching full previous session: {from_date.strftime('%Y-%m-%d %H:%M')} to {to_date.strftime('%Y-%m-%d %H:%M')}")
+            logger.info(f"📊 Expected ~375 candles for EMA200 calculation (required by Alpha-Ensemble)")
         else:
-            # After market open: Fetch ONLY yesterday's last hour (realtime will build today's candles)
+            # After market open: Fetch yesterday's full day (realtime will add today's candles)
             yesterday = now - timedelta(days=1)
             while yesterday.weekday() >= 5:  # Handle weekends
                 yesterday -= timedelta(days=1)
             to_date = yesterday.replace(hour=15, minute=30, second=0, microsecond=0)  # Yesterday 3:30 PM
-            from_date = yesterday.replace(hour=14, minute=30, second=0, microsecond=0)  # Yesterday 2:30 PM (LAST 60 MIN)
-            logger.info(f"📊 Fetching last 60 minutes of previous session: {from_date.strftime('%Y-%m-%d %H:%M')} to {to_date.strftime('%Y-%m-%d %H:%M')}")
-            logger.info(f"📊 Expected ~60 candles (realtime will add today's candles)")
+            from_date = yesterday.replace(hour=9, minute=15, second=0, microsecond=0)  # Yesterday 9:15 AM (FULL DAY)
+            logger.info(f"📊 Fetching full previous session: {from_date.strftime('%Y-%m-%d %H:%M')} to {to_date.strftime('%Y-%m-%d %H:%M')}")
+            logger.info(f"📊 Expected ~375 candles (realtime will add today's candles for 200+ total)")
         
         success_count = 0
         fail_count = 0
@@ -917,19 +916,30 @@ class RealtimeBotEngine:
                 )
                 
                 if df is not None and len(df) > 0:
+                    # CRITICAL: Validate DataFrame has required OHLC columns
+                    # Historical data manager returns capitalized columns: 'Open', 'High', 'Low', 'Close', 'Volume'
+                    required_columns = ['Open', 'High', 'Low', 'Close', 'Volume']
+                    if not all(col in df.columns for col in required_columns):
+                        fail_count += 1
+                        logger.warning(f"⏭️  [{idx}/{len(self.symbols)}] {symbol}: Invalid DataFrame - missing OHLC columns")
+                        logger.debug(f"   Available columns: {list(df.columns)}")
+                        continue
+                    
                     # 🚨 AUDIT OPTIMIZATION #3: Timestamp validation (prevent look-ahead bias)
                     from datetime import datetime
                     now_timestamp = datetime.now()
                     
                     # Check for future timestamps
-                    if 'timestamp' in df.columns:
-                        future_candles = df[df['timestamp'] > now_timestamp]
+                    if 'timestamp' in df.columns or df.index.name == 'timestamp':
+                        # Timestamp might be in index or column
+                        timestamp_series = df.index if df.index.name == 'timestamp' else df['timestamp']
+                        future_candles = df[timestamp_series > now_timestamp]
                         if len(future_candles) > 0:
                             logger.error(f"🚨 LOOK-AHEAD BIAS DETECTED: {symbol} has {len(future_candles)} future candles!")
-                            logger.error(f"   Latest candle: {df['timestamp'].iloc[-1]}")
+                            logger.error(f"   Latest candle: {timestamp_series.iloc[-1] if isinstance(timestamp_series, pd.Series) else timestamp_series[-1]}")
                             logger.error(f"   Current time:  {now_timestamp}")
                             # Filter out future candles
-                            df = df[df['timestamp'] <= now_timestamp]
+                            df = df[timestamp_series <= now_timestamp]
                             logger.info(f"   ✅ Filtered to {len(df)} valid candles (no future data)")
                     
                     # Calculate indicators if we have enough data
@@ -977,10 +987,18 @@ class RealtimeBotEngine:
     
     def _verify_ready_to_trade(self):
         """Final verification before entering trading loop"""
+        from datetime import datetime
+        now = datetime.now()
+        market_open_time = now.replace(hour=9, minute=15, second=0, microsecond=0)
+        
+        # CRITICAL FIX: Before market open or after holidays, historical data may not be available
+        # Bot should still be allowed to start - it will build candles from live ticks
+        is_before_market_open = now < market_open_time
+        
         checks = {
             'websocket_connected': self.ws_manager and hasattr(self.ws_manager, 'is_connected') and getattr(self.ws_manager, 'is_connected', False),
             'has_prices': len(self.latest_prices) > 0,
-            'has_candles': len(self.candle_data) >= len(self.symbol_tokens) * 0.5,  # At least 50% of symbols (Angel One API can be slow at market open)
+            'has_candles': len(self.candle_data) >= len(self.symbol_tokens) * 0.5 if not is_before_market_open else True,  # Require candles only after market open
             'has_tokens': len(self.symbol_tokens) > 0,
         }
         
@@ -988,6 +1006,11 @@ class RealtimeBotEngine:
         for check, status in checks.items():
             icon = "✅" if status else "❌"
             logger.info(f"  {icon} {check}: {status}")
+        
+        # Add warning if starting without candles
+        if len(self.candle_data) == 0:
+            logger.warning("⚠️  Bot starting WITHOUT historical candles (will build from live ticks)")
+            logger.warning("⚠️  Signals will only generate after accumulating 200+ candles (~3-4 hours)")
         
         if not all(checks.values()):
             failed = [k for k, v in checks.items() if not v]
@@ -2176,7 +2199,7 @@ class RealtimeBotEngine:
         
         # Check current positions
         current_positions = self._position_manager.get_all_positions()
-        max_positions = self._risk_manager.risk_limits.max_positions
+        max_positions = self._risk_manager.limits.max_open_positions
         available_slots = max_positions - len(current_positions)
         
         if available_slots <= 0:
@@ -2197,7 +2220,15 @@ class RealtimeBotEngine:
                     continue
                 
                 df = candle_data_copy[symbol].copy()
-                current_price = latest_prices_copy.get(symbol, float(df['close'].iloc[-1]))
+                
+                # CRITICAL: Validate DataFrame has required columns before accessing
+                # Columns can be either lowercase ('close') or capitalized ('Close')
+                close_col = 'Close' if 'Close' in df.columns else 'close'
+                if close_col not in df.columns:
+                    logger.warning(f"⏭️  {symbol}: DataFrame missing close column - skipping")
+                    continue
+                
+                current_price = latest_prices_copy.get(symbol, float(df[close_col].iloc[-1]))
                 
                 # Run Alpha-Ensemble analysis
                 signal = self._alpha_ensemble.analyze_symbol(df, symbol, current_price)

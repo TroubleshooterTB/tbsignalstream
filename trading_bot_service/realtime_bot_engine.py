@@ -2404,32 +2404,32 @@ class RealtimeBotEngine:
             # 🎯 EXTRACT ACTUAL SIGNAL TYPE FROM PATTERN
             # Map internal pattern names to user-friendly signal types
             signal_type = 'Breakout'  # Default
-            if 'pattern_details' in locals() and isinstance(pattern_details, dict):
-                pattern_name = pattern_details.get('pattern', 'Breakout')
-                if pattern_name == 'MEAN_REVERSION':
-                    signal_type = 'Mean Reversion'
-                elif 'Alpha-Ensemble' in reason or 'alpha_ensemble' in reason.lower():
-                    signal_type = 'Alpha Ensemble'
-                elif 'Defining Order' in reason or 'defining' in reason.lower():
-                    signal_type = 'Defining Order'
-                elif 'Ironclad' in reason:
-                    signal_type = 'Ironclad'
-                else:
-                    # Extract pattern from reason (e.g., "Pattern: Double Top")
-                    if 'Pattern:' in reason:
-                        extracted = reason.split('Pattern: ')[-1].split(' |')[0].strip()
-                        if extracted:
-                            signal_type = extracted
+            
+            # Extract signal type from reason string
+            if 'Alpha-Ensemble' in reason or 'alpha_ensemble' in reason.lower():
+                signal_type = 'Alpha Ensemble'
+            elif 'Defining Order' in reason or 'defining' in reason.lower():
+                signal_type = 'Defining Order'
+            elif 'Ironclad' in reason:
+                signal_type = 'Ironclad'
+            elif 'Mean Reversion' in reason or 'MEAN_REVERSION' in reason:
+                signal_type = 'Mean Reversion'
+            elif 'Pattern:' in reason:
+                # Extract pattern from reason (e.g., "Pattern: Double Top")
+                extracted = reason.split('Pattern: ')[-1].split(' |')[0].strip()
+                if extracted:
+                    signal_type = extracted
             
             # 🌊 DETERMINE MARKET REGIME
             current_adx = 25  # Default
-            if symbol in candle_data_copy:
-                try:
-                    df_temp = candle_data_copy[symbol]
-                    if 'adx' in df_temp.columns:
-                        current_adx = float(df_temp['adx'].iloc[-1])
-                except:
-                    pass
+            with self._lock:
+                if symbol in self.candle_data:
+                    try:
+                        df_temp = self.candle_data[symbol]
+                        if 'adx' in df_temp.columns:
+                            current_adx = float(df_temp['adx'].iloc[-1])
+                    except:
+                        pass
             regime = 'sideways' if current_adx < 20 else 'trending'
             
             signal_data = {

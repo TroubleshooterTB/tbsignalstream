@@ -66,6 +66,7 @@ def set_screening_mode():
         
         # Save preference to Firestore
         from main import db
+        from firebase_admin import firestore
         if db:
             db.collection('bot_configs').document(user_id).update({
                 'screening_mode': preset.name,

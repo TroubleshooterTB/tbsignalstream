@@ -168,6 +168,9 @@ class RealtimeBotEngine:
             # CRITICAL: Check if tokens are expired before starting
             self._check_and_refresh_tokens()
             
+            # 🆕 LOAD USER PREFERENCES FROM FIRESTORE
+            self._load_user_preferences()
+            
             # 🔄 REPLAY MODE: Use simulation instead of real-time trading
             if self.is_replay_mode:
                 logger.info("="*80)
@@ -1109,6 +1112,15 @@ class RealtimeBotEngine:
         )
         logger.info("✅ Advanced Screening Manager initialized (fail-safe mode: ON, TICK: ON)")
         
+        # 🆕 APPLY SAVED SCREENING PRESET (if loaded from Firestore)
+        if hasattr(self, '_screening_preset'):
+            try:
+                from screening_presets import apply_preset_to_screening
+                apply_preset_to_screening(self._advanced_screening, self._screening_preset)
+                logger.info(f"✅ Applied saved screening preset: {self._screening_preset.name}")
+            except Exception as e:
+                logger.error(f"Error applying screening preset: {e}")
+        
         # NEW: Initialize ML Data Logger
         try:
             self._ml_logger = MLDataLogger(db_client=self.db)
@@ -1802,27 +1814,27 @@ class RealtimeBotEngine:
                             # Log rejected signal for ML training
                             if self._ml_logger and self._ml_logger.enabled:
                                 try:
-                                df_latest = candle_data_copy[sig['symbol']].iloc[-1]
-                                rejected_signal_data = {
-                                    'symbol': sig['symbol'],
-                                    'action': signal_data['action'],
-                                    'entry_price': sig['current_price'],
-                                    'stop_loss': sig['stop_loss'],
-                                    'target': sig['target'],
-                                    'rsi': df_latest.get('rsi', 50),
-                                    'macd': df_latest.get('macd', 0),
-                                    'macd_signal': df_latest.get('macd_signal', 0),
-                                    'adx': df_latest.get('adx', 20),
-                                    'pattern_type': sig['pattern_details'].get('pattern_name', 'Unknown'),
-                                    'confidence': sig['confidence']
-                                }
-                                self._ml_logger.log_rejected_signal(rejected_signal_data, screen_reason)
-                            except Exception as log_err:
-                                logger.debug(f"ML logger (rejected signal) error: {log_err}")
+                                    df_latest = candle_data_copy[sig['symbol']].iloc[-1]
+                                    rejected_signal_data = {
+                                        'symbol': sig['symbol'],
+                                        'action': signal_data['action'],
+                                        'entry_price': sig['current_price'],
+                                        'stop_loss': sig['stop_loss'],
+                                        'target': sig['target'],
+                                        'rsi': df_latest.get('rsi', 50),
+                                        'macd': df_latest.get('macd', 0),
+                                        'macd_signal': df_latest.get('macd_signal', 0),
+                                        'adx': df_latest.get('adx', 20),
+                                        'pattern_type': sig['pattern_details'].get('pattern_name', 'Unknown'),
+                                        'confidence': sig['confidence']
+                                    }
+                                    self._ml_logger.log_rejected_signal(rejected_signal_data, screen_reason)
+                                except Exception as log_err:
+                                    logger.debug(f"ML logger (rejected signal) error: {log_err}")
 
-                        continue  # Skip this trade
+                            continue  # Skip this trade
 
-                    logger.info(f"✅ [{sig['symbol']}] Advanced Screening PASSED: {screen_reason}")
+                        logger.info(f"✅ [{sig['symbol']}] Advanced Screening PASSED: {screen_reason}")
                     else:
                         logger.warning(f"⚠️ [{sig['symbol']}] SCREENING BYPASSED - Test/Manual trade")
                         screen_reason = "BYPASSED"
@@ -3536,6 +3548,63 @@ class RealtimeBotEngine:
                 
         except Exception as e:
             logger.error(f"❌ Failed to check token expiry: {e}", exc_info=True)
+    
+    def _load_user_preferences(self):
+        """
+        Load user preferences from Firestore and apply them to bot configuration.
+        This includes: screening mode, TradingView settings, notification preferences.
+        """
+        try:
+            if self.db is None:
+                logger.warning("⚠️  No Firestore client - skipping preference loading")
+                return
+            
+            # Load bot config
+            config_doc = self.db.collection('bot_configs').document(self.user_id).get()
+            
+            if config_doc.exists:
+                config_data = config_doc.to_dict()
+                
+                # Apply screening mode
+                screening_mode = config_data.get('screening_mode', 'RELAXED')
+                logger.info(f"📋 Loading screening mode: {screening_mode}")
+                
+                try:
+                    from screening_presets import get_preset, apply_preset_to_screening, apply_preset_to_strategy
+                    
+                    preset = get_preset(screening_mode)
+                    
+                    # Apply to screening manager (will be initialized when first trade happens)
+                    # Store preset for lazy initialization
+                    self._screening_preset = preset
+                    
+                    logger.info(f"✅ Loaded {screening_mode} screening mode")
+                    logger.info(f"   Expected: {preset.expected_signals_per_day} signals/day, {preset.expected_pass_rate*100:.1f}% pass rate")
+                    
+                except Exception as e:
+                    logger.error(f"Error loading screening preset: {e}")
+            
+            # Load user settings for notifications
+            user_doc = self.db.collection('users').document(self.user_id).get()
+            
+            if user_doc.exists:
+                user_data = user_doc.to_dict()
+                
+                # Store for activity logger
+                self._user_telegram_enabled = user_data.get('telegram_enabled', False)
+                self._user_telegram_chat_id = user_data.get('telegram_chat_id')
+                self._user_telegram_bot_token = user_data.get('telegram_bot_token')
+                
+                if self._user_telegram_enabled:
+                    logger.info(f"✅ Telegram notifications enabled")
+                else:
+                    logger.info(f"ℹ️  Telegram notifications disabled")
+            
+            logger.info("✅ User preferences loaded successfully")
+            
+        except Exception as e:
+            logger.error(f"Error loading user preferences: {e}", exc_info=True)
+            logger.warning("⚠️  Continuing with default settings")
     
     def _close_position_replay_helper(self, position, exit_price, signal_type, rationale):
         """Helper method to close position during replay mode"""

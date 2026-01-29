@@ -107,35 +107,6 @@ def get_current_mode():
             'current_mode': 'RELAXED',
             'source': 'default'
         })
-                    screening.enable_ma_crossover,
-                    screening.enable_bb_squeeze,
-                    screening.enable_sr_confluence,
-                    screening.enable_gap_analysis,
-                    screening.enable_nrb_trigger,
-                    screening.enable_tick_indicator,
-                    screening.enable_ml_filter,
-                    screening.enable_retest_logic
-                ])
-                
-                if enabled_count == 0:
-                    detected_mode = 'RELAXED'
-                elif enabled_count >= 7:
-                    detected_mode = 'STRICT'
-                else:
-                    detected_mode = 'MEDIUM'
-                
-                return jsonify({
-                    'mode': detected_mode,
-                    'enabled_checks': enabled_count,
-                    'max_var': f"{screening.max_portfolio_var_percent}%"
-                })
-        
-        # Default
-        return jsonify({
-            'user_id': user_id,
-            'current_mode': 'RELAXED',
-            'source': 'default'
-        })
         
     except Exception as e:
         logger.error(f"Error getting current mode: {e}", exc_info=True)

@@ -1198,11 +1198,15 @@ def service_status():
     Detailed service status for monitoring/debugging
     Not used for health checks - returns 200 even with issues
     """
+    from production_hardening import health_monitor
+    
+    health_report = health_monitor.get_health_report()
+    
     status = {
         'service': 'trading-bot-service',
-        'version': '1.0.0',
+        'version': '2.0.0',  # Phase 1-5 complete
         'timestamp': datetime.now().isoformat(),
-        'uptime_seconds': None,  # Could track this with start time
+        'health': health_report,
         'firestore': {
             'connected': db is not None,
             'error': firestore_error
@@ -1214,11 +1218,30 @@ def service_status():
         'environment': {
             'api_key_configured': bool(ANGEL_ONE_API_KEY),
             'port': int(os.environ.get('PORT', 8080)),
+        },
+        'features': {
+            'manual_override': True,
+            'tradingview_webhook': True,
+            'screening_modes': True,
+            'signal_quality_scoring': True,
+            'production_hardening': True
         }
     }
     
     return jsonify(status), 200
 
+
+# Register Manual Trade Blueprint (Phase 1)
+from manual_trade_api import manual_trade_bp
+app.register_blueprint(manual_trade_bp)
+
+# Register TradingView Webhook Blueprint (Phase 2)
+from tradingview_webhook_api import tradingview_webhook_bp
+app.register_blueprint(tradingview_webhook_bp)
+
+# Register Screening Mode API Blueprint (Phase 3)
+from screening_api import screening_api_bp
+app.register_blueprint(screening_api_bp)
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))

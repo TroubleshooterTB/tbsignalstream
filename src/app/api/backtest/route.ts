@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get backend URL from environment or default
-    const backendUrl = process.env.BACKEND_URL || 'https://trading-bot-service-vmxfbt7qiq-el.a.run.app';
+    const backendUrl = process.env.BACKEND_URL || 'https://trading-bot-service-818546654122.us-central1.run.app';
 
     const requestBody: any = {
       strategy,

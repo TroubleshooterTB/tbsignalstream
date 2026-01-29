@@ -21,7 +21,7 @@ import { db } from "@/lib/firebase";
 import { collection, addDoc, query, orderBy, limit, getDocs, Timestamp } from "firebase/firestore";
 
 // Backend API URL
-const BACKEND_URL = 'https://trading-bot-service-vmxfbt7qiq-el.a.run.app';
+const BACKEND_URL = 'https://trading-bot-service-818546654122.us-central1.run.app';
 
 type BacktestResult = {
   symbol: string;

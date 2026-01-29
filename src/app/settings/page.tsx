@@ -122,7 +122,8 @@ export default function Settings() {
 			<div className="container mx-auto p-6">
 				<h1 className="text-2xl font-bold mb-4">Settings</h1>
 				<div className="flex items-center justify-center h-64">
-				<Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+					<Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+				</div>
 			</div>
 		);
 	}

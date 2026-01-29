@@ -121,8 +121,9 @@ def tradingview_webhook():
     - Requires API key in Authorization header
     - Validates alert format
     """
-    from main import user_bots, db
-    from test_signal_injector import TestSignalInjector
+    from main import db
+    from firebase_admin import firestore
+    import uuid
     
     try:
         # Get API key from Authorization header
@@ -152,12 +153,6 @@ def tradingview_webhook():
         user_id = user_doc.id
         user_data = user_doc.to_dict()
         
-        # Check if bot is running
-        if user_id not in user_bots:
-            return jsonify({'error': 'Bot not running. Start bot first.'}), 400
-        
-        bot_instance = user_bots[user_id]
-        
         # Validate signature (if webhook secret configured)
         webhook_secret = user_data.get('tradingview_webhook_secret')
         if webhook_secret:
@@ -181,36 +176,45 @@ def tradingview_webhook():
         # Handle CLOSE action
         if parsed_signal['action'] == 'CLOSE':
             symbol = parsed_signal['symbol']
-            positions = bot_instance.engine._position_manager.get_all_positions()
             
-            if symbol not in positions:
+            # Find open position
+            positions_ref = db.collection('positions')
+            query = positions_ref.where('user_id', '==', user_id).where('symbol', '==', symbol).where('status', '==', 'open').limit(1).stream()
+            
+            position_doc = None
+            for doc in query:
+                position_doc = doc
+                break
+            
+            if not position_doc:
                 return jsonify({'error': f'No open position for {symbol}'}), 404
             
-            position = positions[symbol]
-            
-            with bot_instance.engine._lock:
-                current_price = bot_instance.engine.latest_prices.get(symbol, position['entry_price'])
-            
-            bot_instance.engine._close_position(
-                symbol=symbol,
-                position=position,
-                exit_price=current_price,
-                reason='TRADINGVIEW_CLOSE'
-            )
+            # Mark for closing
+            position_doc.reference.update({
+                'manual_close_requested': True,
+                'close_source': 'tradingview',
+                'manual_close_at': firestore.SERVER_TIMESTAMP,
+                'status': 'closing'
+            })
             
             return jsonify({
                 'status': 'success',
                 'action': 'CLOSE',
                 'symbol': symbol,
-                'exit_price': current_price
+                'message': 'Position marked for closing'
             })
         
         # Handle BUY/SELL actions
         # Convert to internal signal format
         direction = 'up' if parsed_signal['action'] == 'BUY' else 'down'
         
-        trade_signal = {
+        # Create signal in Firestore
+        signal_id = str(uuid.uuid4())
+        signal_data = {
+            'user_id': user_id,
+            'signal_id': signal_id,
             'symbol': parsed_signal['symbol'],
+            'action': parsed_signal['action'],
             'direction': direction,
             'entry_price': parsed_signal['price'],
             'stop_loss': parsed_signal['stop_loss'],
@@ -218,29 +222,33 @@ def tradingview_webhook():
             'quantity': parsed_signal['quantity'],
             'reason': f"TRADINGVIEW_{parsed_signal['strategy']}",
             'confidence': 0.85,  # TradingView signals = 85% confidence
-            'bypass_screening': False  # Go through screening (can be configured)
+            'source': 'tradingview',
+            'status': 'pending',
+            'created_at': firestore.SERVER_TIMESTAMP
         }
         
         # Check if user wants to bypass screening for TradingView
         if user_data.get('tradingview_bypass_screening', False):
-            trade_signal['bypass_screening'] = True
+            signal_data['bypass_screening'] = True
             logger.info(f"⚠️ TradingView signal bypassing screening (user preference)")
-        
-        # Inject signal
-        injector = TestSignalInjector(bot_instance.engine)
-        success = injector.inject_via_api(trade_signal)
-        
-        if success:
-            return jsonify({
-                'status': 'success',
-                'action': parsed_signal['action'],
-                'symbol': parsed_signal['symbol'],
-                'entry': parsed_signal['price'],
-                'stop_loss': parsed_signal['stop_loss'],
-                'target': parsed_signal['target']
-            })
         else:
-            return jsonify({'error': 'Failed to process signal'}), 500
+            signal_data['bypass_screening'] = False
+        
+        # Save signal to Firestore
+        db.collection('signals').document(signal_id).set(signal_data)
+        
+        logger.info(f"✅ TradingView signal created: {signal_id} for {parsed_signal['symbol']}")
+        
+        return jsonify({
+            'status': 'success',
+            'signal_id': signal_id,
+            'action': parsed_signal['action'],
+            'symbol': parsed_signal['symbol'],
+            'entry': parsed_signal['price'],
+            'stop_loss': parsed_signal['stop_loss'],
+            'target': parsed_signal['target'],
+            'message': 'Signal created. Bot will process when running.'
+        })
         
     except Exception as e:
         logger.error(f"TradingView webhook error: {e}", exc_info=True)

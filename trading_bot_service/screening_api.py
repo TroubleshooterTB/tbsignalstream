@@ -28,11 +28,12 @@ def get_screening_modes():
 @screening_api_bp.route('/set-mode', methods=['POST'])
 def set_screening_mode():
     """
-    Change screening mode for a running bot
-    Applies both screening and strategy parameter changes
+    Change screening mode for a user
+    Saves to Firestore - bot will load on next start
     """
-    from main import user_bots
-    from screening_presets import get_preset, apply_preset_to_screening, apply_preset_to_strategy
+    from main import db
+    from firebase_admin import firestore
+    from screening_presets import get_preset
     
     try:
         data = request.get_json()
@@ -42,45 +43,31 @@ def set_screening_mode():
         if not user_id or not mode:
             return jsonify({'error': 'user_id and mode required'}), 400
         
-        if user_id not in user_bots:
-            return jsonify({'error': 'Bot not running'}), 400
-        
-        bot_instance = user_bots[user_id]
+        if mode not in ['RELAXED', 'MEDIUM', 'STRICT']:
+            return jsonify({'error': 'Invalid mode. Must be RELAXED, MEDIUM, or STRICT'}), 400
         
         # Get preset
         preset = get_preset(mode)
         
-        # Apply to screening manager
-        if bot_instance.engine._advanced_screening:
-            apply_preset_to_screening(
-                bot_instance.engine._advanced_screening,
-                preset
-            )
-        
-        # Apply to active strategies
-        for strategy in bot_instance.engine.active_strategies:
-            strategy_name = strategy.__class__.__name__
+        # Save to Firestore
+        if not db:
+            return jsonify({'error': 'Database not initialized'}), 500
             
-            if strategy_name == 'AlphaEnsembleStrategy':
-                apply_preset_to_strategy(strategy, preset)
-        
-        # Save preference to Firestore
-        from main import db
-        from firebase_admin import firestore
-        if db:
-            db.collection('bot_configs').document(user_id).update({
-                'screening_mode': preset.name,
-                'screening_mode_updated': firestore.SERVER_TIMESTAMP
-            })
+        db.collection('bot_configs').document(user_id).set({
+            'screening_mode': preset.name,
+            'screening_mode_updated': firestore.SERVER_TIMESTAMP
+        }, merge=True)
         
         logger.info(f"✅ Screening mode changed to {preset.name} for user {user_id}")
+        logger.info(f"   Bot will load this mode on next start")
         
         return jsonify({
             'status': 'success',
             'mode': preset.name,
             'description': preset.description,
             'expected_signals_per_day': preset.expected_signals_per_day,
-            'expected_pass_rate': f"{preset.expected_pass_rate*100:.1f}%"
+            'expected_pass_rate': f"{preset.expected_pass_rate*100:.1f}%",
+            'message': 'Screening mode saved. Restart bot to apply changes.'
         })
         
     except Exception as e:
@@ -91,7 +78,7 @@ def set_screening_mode():
 @screening_api_bp.route('/current-mode', methods=['GET'])
 def get_current_mode():
     """Get current screening mode for a user"""
-    from main import user_bots, db
+    from main import db
     
     try:
         user_id = request.args.get('user_id')
@@ -99,15 +86,27 @@ def get_current_mode():
         if not user_id:
             return jsonify({'error': 'user_id required'}), 400
         
-        # Try to get from bot first
-        if user_id in user_bots:
-            bot_instance = user_bots[user_id]
-            
-            if bot_instance.engine._advanced_screening:
-                screening = bot_instance.engine._advanced_screening
-                
-                # Detect current mode based on enabled checks
-                enabled_count = sum([
+        if not db:
+            return jsonify({'error': 'Database not initialized'}), 500
+        
+        # Get from Firestore
+        config = db.collection('bot_configs').document(user_id).get()
+        
+        if config.exists:
+            data = config.to_dict()
+            return jsonify({
+                'user_id': user_id,
+                'current_mode': data.get('screening_mode', 'RELAXED'),
+                'updated_at': data.get('screening_mode_updated'),
+                'source': 'firestore'
+            })
+        
+        # Default
+        return jsonify({
+            'user_id': user_id,
+            'current_mode': 'RELAXED',
+            'source': 'default'
+        })
                     screening.enable_ma_crossover,
                     screening.enable_bb_squeeze,
                     screening.enable_sr_confluence,
@@ -131,17 +130,12 @@ def get_current_mode():
                     'max_var': f"{screening.max_portfolio_var_percent}%"
                 })
         
-        # Fall back to Firestore
-        if db:
-            config_doc = db.collection('bot_configs').document(user_id).get()
-            if config_doc.exists:
-                config_data = config_doc.to_dict()
-                return jsonify({
-                    'mode': config_data.get('screening_mode', 'MEDIUM')
-                })
-        
         # Default
-        return jsonify({'mode': 'MEDIUM'})
+        return jsonify({
+            'user_id': user_id,
+            'current_mode': 'RELAXED',
+            'source': 'default'
+        })
         
     except Exception as e:
         logger.error(f"Error getting current mode: {e}", exc_info=True)

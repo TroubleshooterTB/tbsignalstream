@@ -120,7 +120,7 @@ def update_user_settings():
             update_data['daily_summary'] = data['daily_summary']
         
         if update_data:
-            user_ref.update(update_data)
+            user_ref.set(update_data, merge=True)
             logger.info(f"✅ Updated settings for user {user_id}")
         
         return jsonify({

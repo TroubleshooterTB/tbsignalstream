@@ -71,10 +71,11 @@ def create_manual_signal(symbol: str, action: str, price: float,
 def place_manual_trade():
     """
     Place manual trade, bypassing all screening
-    Only works in PAPER mode
+    Creates signal in Firestore for bot to pick up
     """
-    from main import user_bots
-    from test_signal_injector import TestSignalInjector
+    from main import db
+    from firebase_admin import firestore
+    import uuid
     
     try:
         data = request.get_json()
@@ -92,23 +93,18 @@ def place_manual_trade():
         stop_loss_pct = data.get('stop_loss_pct', 2.0)
         target_pct = data.get('target_pct', 5.0)
         
-        # Check bot running
-        if user_id not in user_bots:
-            return jsonify({'error': 'Bot not running'}), 400
-        
-        bot_instance = user_bots[user_id]
-        
-        # Verify paper mode
-        if bot_instance.mode != 'paper':
-            return jsonify({'error': 'Manual trades only work in PAPER mode'}), 403
+        if not db:
+            return jsonify({'error': 'Database not initialized'}), 500
         
         # Get current price if not provided
         if not price:
-            with bot_instance.engine._lock:
-                price = bot_instance.engine.latest_prices.get(symbol)
+            # Try to get from latest_prices collection
+            price_doc = db.collection('latest_prices').document(symbol).get()
+            if price_doc.exists:
+                price = price_doc.to_dict().get('price')
             
             if not price:
-                return jsonify({'error': f'No price data for {symbol}'}), 400
+                return jsonify({'error': f'No price data for {symbol}. Please provide price manually.'}), 400
         
         # Create manual signal
         manual_signal = create_manual_signal(
@@ -120,26 +116,46 @@ def place_manual_trade():
             target_pct=target_pct
         )
         
-        # Inject via test injector
-        injector = TestSignalInjector(bot_instance.engine)
-        success = injector.inject_via_api(manual_signal)
+        # Save directly to Firestore
+        signal_id = str(uuid.uuid4())
+        signal_ref = db.collection('signals').document(signal_id)
+        signal_ref.set({
+            'user_id': user_id,
+            'signal_id': signal_id,
+            'symbol': symbol,
+            'action': action,
+            'entry_price': price,
+            'quantity': quantity,
+            'stop_loss': manual_signal['stop_loss'],
+            'target': manual_signal['target'],
+            'confidence': 1.0,
+            'source': 'manual_trade',
+            'bypass_screening': True,
+            'status': 'pending',
+            'created_at': firestore.SERVER_TIMESTAMP,
+            'metadata': {
+                'stop_loss_pct': stop_loss_pct,
+                'target_pct': target_pct,
+                'risk_reward': target_pct / stop_loss_pct
+            }
+        })
         
-        if success:
-            logger.info(f"✅ Manual {action} placed: {symbol} @ {price:.2f}")
-            return jsonify({
-                'status': 'success',
-                'message': f'Manual {action} order placed for {symbol}',
-                'details': {
-                    'symbol': symbol,
-                    'action': action,
-                    'entry': price,
-                    'stop_loss': manual_signal['stop_loss'],
-                    'target': manual_signal['target'],
-                    'quantity': quantity
-                }
-            })
-        else:
-            return jsonify({'error': 'Failed to place manual order'}), 500
+        logger.info(f"✅ Manual {action} placed: {symbol} @ {price:.2f} (signal_id: {signal_id})")
+        
+        return jsonify({
+            'status': 'success',
+            'message': f'Manual {action} order placed for {symbol}',
+            'signal_id': signal_id,
+            'details': {
+                'symbol': symbol,
+                'action': action,
+                'entry': price,
+                'stop_loss': manual_signal['stop_loss'],
+                'target': manual_signal['target'],
+                'quantity': quantity,
+                'risk_reward': target_pct / stop_loss_pct
+            }
+        })
             
     except Exception as e:
         logger.error(f"Error placing manual trade: {e}", exc_info=True)
@@ -150,48 +166,53 @@ def place_manual_trade():
 def manual_quick_close():
     """
     Manually close a specific position
+    Updates position status in Firestore
     """
-    from main import user_bots
+    from main import db
+    from firebase_admin import firestore
     
     try:
         data = request.get_json()
         user_id = data.get('user_id')
         symbol = data.get('symbol')
         
-        if not user_id or user_id not in user_bots:
-            return jsonify({'error': 'Bot not running'}), 400
+        if not user_id or not symbol:
+            return jsonify({'error': 'user_id and symbol required'}), 400
         
-        if not symbol:
-            return jsonify({'error': 'Symbol required'}), 400
+        if not db:
+            return jsonify({'error': 'Database not initialized'}), 500
         
-        bot_instance = user_bots[user_id]
+        # Find open position for this symbol
+        positions_ref = db.collection('positions')
+        query = positions_ref.where('user_id', '==', user_id).where('symbol', '==', symbol).where('status', '==', 'open').limit(1).stream()
         
-        # Get position
-        positions = bot_instance.engine._position_manager.get_all_positions()
+        position_doc = None
+        for doc in query:
+            position_doc = doc
+            break
         
-        if symbol not in positions:
-            return jsonify({'error': f'No open position for {symbol}'}), 404
+        if not position_doc:
+            return jsonify({'error': f'No open position found for {symbol}'}), 404
         
-        position = positions[symbol]
+        position_data = position_doc.to_dict()
         
-        # Get current price
-        with bot_instance.engine._lock:
-            current_price = bot_instance.engine.latest_prices.get(symbol, position['entry_price'])
+        # Mark position for closing
+        position_doc.reference.update({
+            'manual_close_requested': True,
+            'manual_close_at': firestore.SERVER_TIMESTAMP,
+            'status': 'closing'
+        })
         
-        # Close position
-        bot_instance.engine._close_position(
-            symbol=symbol,
-            position=position,
-            exit_price=current_price,
-            reason='MANUAL_CLOSE'
-        )
-        
-        logger.info(f"✅ Manual close: {symbol} @ {current_price:.2f}")
+        logger.info(f"✅ Marked position {symbol} for manual close (user: {user_id})")
         
         return jsonify({
             'status': 'success',
-            'message': f'Position closed for {symbol}',
-            'exit_price': current_price
+            'message': f'Position {symbol} marked for closing',
+            'details': {
+                'symbol': symbol,
+                'entry': position_data.get('entry_price'),
+                'quantity': position_data.get('quantity')
+            }
         })
         
     except Exception as e:
@@ -203,47 +224,59 @@ def manual_quick_close():
 def manual_close_all():
     """
     Close all open positions immediately
+    Marks all positions for closing in Firestore
     """
-    from main import user_bots
+    from main import db
+    from firebase_admin import firestore
     
     try:
         data = request.get_json()
         user_id = data.get('user_id')
         
-        if not user_id or user_id not in user_bots:
-            return jsonify({'error': 'Bot not running'}), 400
+        if not user_id:
+            return jsonify({'error': 'user_id required'}), 400
         
-        bot_instance = user_bots[user_id]
+        if not db:
+            return jsonify({'error': 'Database not initialized'}), 500
         
-        # Get all positions
-        positions = bot_instance.engine._position_manager.get_all_positions()
+        # Find all open positions for this user
+        positions_ref = db.collection('positions')
+        query = positions_ref.where('user_id', '==', user_id).where('status', '==', 'open').stream()
         
-        if not positions:
-            return jsonify({'message': 'No open positions'}), 200
+        closed_count = 0
+        closed_symbols = []
         
-        closed_positions = []
+        for doc in query:
+            position_data = doc.to_dict()
+            symbol = position_data.get('symbol')
+            
+            # Mark for closing
+            doc.reference.update({
+                'manual_close_requested': True,
+                'manual_close_at': firestore.SERVER_TIMESTAMP,
+                'status': 'closing'
+            })
+            
+            closed_count += 1
+            closed_symbols.append(symbol)
         
-        # Close each position
-        for symbol, position in positions.items():
-            try:
-                with bot_instance.engine._lock:
-                    current_price = bot_instance.engine.latest_prices.get(symbol, position['entry_price'])
+        logger.info(f"✅ Marked {closed_count} positions for manual close (user: {user_id})")
+        
+        if closed_count == 0:
+            return jsonify({
+                'status': 'success',
+                'message': 'No open positions found',
+                'closed_count': 0
+            }), 200
+        
+        return jsonify({
+            'status': 'success',
+            'message': f'{closed_count} positions marked for closing',
+            'closed_count': closed_count,
+            'symbols': closed_symbols
+        })
                 
-                bot_instance.engine._close_position(
-                    symbol=symbol,
-                    position=position,
-                    exit_price=current_price,
-                    reason='MANUAL_CLOSE_ALL'
-                )
-                
-                closed_positions.append({
-                    'symbol': symbol,
-                    'exit_price': current_price
-                })
-                
-                logger.info(f"✅ Manual close: {symbol} @ {current_price:.2f}")
-                
-            except Exception as e:
+    except Exception as e:
                 logger.error(f"Failed to close {symbol}: {e}")
         
         return jsonify({

@@ -877,22 +877,22 @@ class AlphaEnsembleStrategy:
             df_copy = df.copy()
             
             # EMAs
-            df_copy['EMA_200'] = ta.trend.EMAIndicator(close=df_copy['close'], window=200).ema_indicator()
-            df_copy['EMA_20'] = ta.trend.EMAIndicator(close=df_copy['close'], window=20).ema_indicator()
-            df_copy['EMA_50'] = ta.trend.EMAIndicator(close=df_copy['close'], window=50).ema_indicator()
+            df_copy['EMA_200'] = ta.trend.EMAIndicator(close=df_copy['Close'], window=200).ema_indicator()
+            df_copy['EMA_20'] = ta.trend.EMAIndicator(close=df_copy['Close'], window=20).ema_indicator()
+            df_copy['EMA_50'] = ta.trend.EMAIndicator(close=df_copy['Close'], window=50).ema_indicator()
             
             # ADX
-            adx_indicator = ta.trend.ADXIndicator(high=df_copy['high'], low=df_copy['low'], close=df_copy['close'], window=self.ADX_PERIOD)
+            adx_indicator = ta.trend.ADXIndicator(high=df_copy['High'], low=df_copy['Low'], close=df_copy['Close'], window=self.ADX_PERIOD)
             df_copy['ADX'] = adx_indicator.adx()
             
             # RSI
-            df_copy['RSI'] = ta.momentum.RSIIndicator(close=df_copy['close'], window=self.RSI_PERIOD).rsi()
+            df_copy['RSI'] = ta.momentum.RSIIndicator(close=df_copy['Close'], window=self.RSI_PERIOD).rsi()
             
             # ATR
-            df_copy['ATR'] = ta.volatility.AverageTrueRange(high=df_copy['high'], low=df_copy['low'], close=df_copy['close'], window=self.ATR_PERIOD).average_true_range()
+            df_copy['ATR'] = ta.volatility.AverageTrueRange(high=df_copy['High'], low=df_copy['Low'], close=df_copy['Close'], window=self.ATR_PERIOD).average_true_range()
             
             # Volume SMA
-            df_copy['Volume_SMA'] = df_copy['volume'].rolling(window=20).mean()
+            df_copy['Volume_SMA'] = df_copy['Volume'].rolling(window=20).mean()
             
             # Get latest values
             latest = df_copy.iloc[-1]
@@ -904,7 +904,7 @@ class AlphaEnsembleStrategy:
             adx = latest['ADX']
             rsi = latest['RSI']
             atr = latest['ATR']
-            volume = latest['volume']
+            volume = latest['Volume']
             volume_sma = latest['Volume_SMA']
             
             # Check for NaN values
@@ -1036,6 +1036,10 @@ class AlphaEnsembleStrategy:
                 }
             }
             
+        except KeyError as e:
+            logger.error(f"❌ CRITICAL: Column not found in {symbol} DataFrame: {e}")
+            logger.error(f"   Available columns: {list(df.columns)}")
+            return None
         except Exception as e:
-            logger.error(f"Error analyzing {symbol}: {e}", exc_info=True)
+            logger.error(f"❌ Error analyzing {symbol}: {e}", exc_info=True)
             return None

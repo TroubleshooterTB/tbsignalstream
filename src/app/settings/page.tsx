@@ -27,10 +27,32 @@ export default function Settings() {
 
 	// Load settings and screening modes
 	useEffect(() => {
+		console.log('Settings page: Loading data...');
 		Promise.all([
-			getUserSettings(userId),
-			getScreeningModes()
+			getUserSettings(userId).catch(err => {
+				console.error('Failed to load user settings:', err);
+				// Return default settings if API fails
+				return {
+					user_id: userId,
+					screening_mode: 'RELAXED' as const,
+					telegram_enabled: false,
+					telegram_bot_token: '',
+					telegram_chat_id: '',
+					tradingview_webhook_secret: '',
+					tradingview_bypass_screening: false
+				};
+			}),
+			getScreeningModes().catch(err => {
+				console.error('Failed to load screening modes:', err);
+				// Return default modes if API fails
+				return [
+					{ name: 'RELAXED' as const, description: 'Fewer checks, more signals', expected_signals_per_day: 15, expected_pass_rate: 0.40 },
+					{ name: 'MEDIUM' as const, description: 'Balanced approach', expected_signals_per_day: 8, expected_pass_rate: 0.25 },
+					{ name: 'STRICT' as const, description: 'Maximum quality filter', expected_signals_per_day: 3, expected_pass_rate: 0.10 }
+				];
+			})
 		]).then(([userSettings, modes]) => {
+			console.log('Settings page: Data loaded', { userSettings, modes });
 			setSettings(userSettings);
 			setScreeningModes(modes);
 			setLoading(false);
@@ -97,7 +119,9 @@ export default function Settings() {
 
 	if (loading) {
 		return (
-			<div className="flex items-center justify-center h-64">
+			<div className="container mx-auto p-6">
+				<h1 className="text-2xl font-bold mb-4">Settings</h1>
+				<div className="flex items-center justify-center h-64">
 				<Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
 			</div>
 		);

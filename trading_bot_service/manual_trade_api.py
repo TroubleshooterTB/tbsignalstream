@@ -275,15 +275,6 @@ def manual_close_all():
             'closed_count': closed_count,
             'symbols': closed_symbols
         })
-                
-    except Exception as e:
-                logger.error(f"Failed to close {symbol}: {e}")
-        
-        return jsonify({
-            'status': 'success',
-            'message': f'Closed {len(closed_positions)} positions',
-            'closed': closed_positions
-        })
         
     except Exception as e:
         logger.error(f"Error closing all positions: {e}", exc_info=True)

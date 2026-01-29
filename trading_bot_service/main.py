@@ -81,31 +81,29 @@ active_bots: Dict[str, 'TradingBotInstance'] = {}
 
 def _get_symbols_from_universe(universe: str) -> list:
     """Get symbol list based on universe selection"""
-    # Nifty 50 symbols (default)
-    nifty50 = [
-        'RELIANCE-EQ', 'TCS-EQ', 'HDFCBANK-EQ', 'INFY-EQ', 'ICICIBANK-EQ',
-        'HINDUNILVR-EQ', 'ITC-EQ', 'BHARTIARTL-EQ', 'KOTAKBANK-EQ', 'BAJFINANCE-EQ',
-        'LT-EQ', 'ASIANPAINT-EQ', 'AXISBANK-EQ', 'HCLTECH-EQ', 'MARUTI-EQ',
-        'SUNPHARMA-EQ', 'TITAN-EQ', 'NESTLEIND-EQ', 'ULTRACEMCO-EQ', 'WIPRO-EQ',
-        'NTPC-EQ', 'TATAMOTORS-EQ', 'BAJAJFINSV-EQ', 'TATASTEEL-EQ', 'TECHM-EQ',
-        'ADANIENT-EQ', 'ONGC-EQ', 'COALINDIA-EQ', 'HINDALCO-EQ', 'INDUSINDBK-EQ',
-        'EICHERMOT-EQ', 'DIVISLAB-EQ', 'BRITANNIA-EQ', 'DRREDDY-EQ', 'APOLLOHOSP-EQ',
-        'CIPLA-EQ', 'GRASIM-EQ', 'HEROMOTOCO-EQ', 'ADANIPORTS-EQ', 'HINDZINC-EQ',
-        'M&M-EQ', 'BPCL-EQ', 'TRENT-EQ', 'ADANIGREEN-EQ', 'LTIM-EQ',
-        'SBIN-EQ', 'POWERGRID-EQ', 'JSWSTEEL-EQ', 'SHRIRAMFIN-EQ'
-    ]
+    # Import NIFTY200 watchlist (contains all 200 symbols with tokens)
+    from nifty200_watchlist import NIFTY200_WATCHLIST
+    
+    # Convert watchlist format to symbol strings
+    all_symbols = [stock['symbol'] for stock in NIFTY200_WATCHLIST]
     
     if universe == 'NIFTY50':
-        return nifty50
+        symbols = all_symbols[:50]
+        logger.info(f"📊 Using NIFTY 50 universe: {len(symbols)} symbols")
+        return symbols
     elif universe == 'NIFTY100':
-        # For now, return Nifty 50 (can be expanded later)
-        return nifty50
+        symbols = all_symbols[:100]
+        logger.info(f"📊 Using NIFTY 100 universe: {len(symbols)} symbols")
+        return symbols
     elif universe == 'NIFTY200':
-        # For now, return Nifty 50 (can be expanded later)  
-        return nifty50
+        symbols = all_symbols  # All 200 symbols
+        logger.info(f"📊 Using NIFTY 200 universe: {len(symbols)} symbols")
+        return symbols
     else:
         # Default to Nifty 50
-        return nifty50
+        symbols = all_symbols[:50]
+        logger.warning(f"⚠️  Invalid universe '{universe}', defaulting to NIFTY 50: {len(symbols)} symbols")
+        return symbols
 
 
 class TradingBotInstance:
@@ -193,9 +191,10 @@ class TradingBotInstance:
 def system_status():
     """System status endpoint for dashboard error reporting"""
     global firestore_error
+    from datetime import datetime, timezone
     
     status = {
-        'timestamp': datetime.now().isoformat(),
+        'timestamp': datetime.now(timezone.utc).isoformat(),
         'backend_operational': True,
         'firestore_connected': db is not None,
         'errors': [],
@@ -308,13 +307,13 @@ def check_credentials():
         
         all_set = all(status == 'SET' for status in credentials_status.values())
         
-        from datetime import datetime
+        from datetime import datetime, timezone
         
         return jsonify({
             'status': 'OK' if all_set else 'INCOMPLETE',
             'credentials': credentials_status,
             'api_key_preview': api_key_preview,
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(timezone.utc).isoformat()
         }), 200
         
     except Exception as e:
@@ -484,6 +483,76 @@ def stop_bot():
     
     except Exception as e:
         logger.error(f"Error stopping bot: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/test/inject-signal', methods=['POST'])
+def inject_test_signal():
+    """
+    🧪 TEST ENDPOINT: Inject test signal for pipeline validation
+    Only works in PAPER mode for safety
+    """
+    try:
+        # Verify Firebase ID token
+        auth_header = request.headers.get('Authorization', '')
+        if not auth_header.startswith('Bearer '):
+            return jsonify({'error': 'Missing or invalid authorization header'}), 401
+        
+        id_token = auth_header.split('Bearer ')[1]
+        
+        try:
+            decoded_token = auth.verify_id_token(id_token)
+            user_id = decoded_token['uid']
+        except Exception as e:
+            logger.error(f"Token verification failed: {e}")
+            return jsonify({'error': 'Invalid authentication token'}), 401
+        
+        # Check if bot is running
+        if user_id not in active_bots:
+            return jsonify({'error': 'Bot not running - start bot first'}), 400
+        
+        bot_instance = active_bots[user_id]
+        
+        # SAFETY: Verify paper mode
+        if bot_instance.mode != 'paper':
+            return jsonify({
+                'error': 'Test signals only work in PAPER mode',
+                'current_mode': bot_instance.mode
+            }), 403
+        
+        # Get signal data from request or use default
+        data = request.get_json() or {}
+        symbol = data.get('symbol', 'RELIANCE')
+        
+        # Initialize test injector
+        from test_signal_injector import TestSignalInjector
+        injector = TestSignalInjector(bot_instance.engine)
+        
+        # Generate default test signal
+        test_signal = injector.inject_breakout_signal(symbol=symbol)
+        
+        # Inject signal
+        success = injector.inject_via_api(test_signal)
+        
+        if success:
+            logger.info(f"✅ Test signal injected successfully for {user_id}: {symbol}")
+            return jsonify({
+                'status': 'success',
+                'message': f'Test signal injected for {symbol}',
+                'signal': {
+                    'symbol': test_signal['symbol'],
+                    'direction': test_signal['direction'],
+                    'entry': test_signal['entry_price'],
+                    'stop_loss': test_signal['stop_loss'],
+                    'target': test_signal['target'],
+                    'quantity': test_signal['quantity']
+                }
+            }), 200
+        else:
+            return jsonify({'error': 'Failed to inject test signal'}), 500
+            
+    except Exception as e:
+        logger.error(f"Error injecting test signal: {e}", exc_info=True)
         return jsonify({'error': str(e)}), 500
 
 

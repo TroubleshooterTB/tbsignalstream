@@ -1248,14 +1248,15 @@ class RealtimeBotEngine:
                     logger.debug(f"📝 PAPER MODE: Analyzing outside market hours (testing mode)")
                     # Continue execution
             
-            # 🚨 AUDIT FIX: Liquidity U-Shape Time Filter
-            # Block entries during 12:00-14:30 PM (midday liquidity trap)
-            import pytz
-            ist = pytz.timezone('Asia/Kolkata')
-            current_time = datetime.now(ist).time()
-            if datetime_time(12, 0) <= current_time <= datetime_time(14, 30):
-                logger.debug("⏸️  LIQUIDITY FILTER: Skipping 12:00-14:30 (midday U-shape dip - 12.5% WR trap)")
-                return
+            # 🚨 DISABLED FOR TESTING - Liquidity U-Shape Time Filter
+            # TODO: Re-enable after validation with: if datetime_time(12, 0) <= current_time <= datetime_time(14, 30):
+            # import pytz
+            # ist = pytz.timezone('Asia/Kolkata')
+            # current_time = datetime.now(ist).time()
+            # if datetime_time(12, 0) <= current_time <= datetime_time(14, 30):
+            #     logger.debug("⏸️  LIQUIDITY FILTER: Skipping 12:00-14:30 (midday U-shape dip - 12.5% WR trap)")
+            #     return
+            logger.debug("⚠️  LIQUIDITY FILTER DISABLED - Testing mode (will re-enable after validation)")
             
             # Check EOD auto-close (3:15 PM for safety before broker's 3:20 PM)
             self._check_eod_auto_close()
@@ -1775,28 +1776,32 @@ class RealtimeBotEngine:
                         'score': sig['confidence']
                     }
                     
-                    is_screened, screen_reason = self._advanced_screening.validate_signal(
-                        symbol=sig['symbol'],
-                        signal_data=signal_data,
-                        df=candle_data_copy[sig['symbol']],
-                        current_positions=self._position_manager.get_all_positions(),
-                        current_price=sig['current_price']
-                    )
+                    # 🧪 BYPASS SCREENING FOR TEST/MANUAL TRADES
+                    bypass_screening = signal_data.get('bypass_screening', False)
                     
-                    if not is_screened:
-                        logger.warning(f"❌ [{sig['symbol']}] Advanced Screening BLOCKED: {screen_reason}")
+                    if not bypass_screening:
+                        is_screened, screen_reason = self._advanced_screening.validate_signal(
+                            symbol=sig['symbol'],
+                            signal_data=signal_data,
+                            df=candle_data_copy[sig['symbol']],
+                            current_positions=self._position_manager.get_all_positions(),
+                            current_price=sig['current_price']
+                        )
                         
-                        # Log screening failed to dashboard
-                        if self._activity_logger:
-                            self._activity_logger.log_screening_failed(
-                                symbol=sig['symbol'],
-                                pattern=sig['pattern_details'].get('pattern_name', 'Unknown'),
-                                reason=screen_reason
-                            )
-                        
-                        # Log rejected signal for ML training
-                        if self._ml_logger and self._ml_logger.enabled:
-                            try:
+                        if not is_screened:
+                            logger.warning(f"❌ [{sig['symbol']}] Advanced Screening BLOCKED: {screen_reason}")
+                            
+                            # Log screening failed to dashboard
+                            if self._activity_logger:
+                                self._activity_logger.log_screening_failed(
+                                    symbol=sig['symbol'],
+                                    pattern=sig['pattern_details'].get('pattern_name', 'Unknown'),
+                                    reason=screen_reason
+                                )
+                            
+                            # Log rejected signal for ML training
+                            if self._ml_logger and self._ml_logger.enabled:
+                                try:
                                 df_latest = candle_data_copy[sig['symbol']].iloc[-1]
                                 rejected_signal_data = {
                                     'symbol': sig['symbol'],
@@ -1818,6 +1823,9 @@ class RealtimeBotEngine:
                         continue  # Skip this trade
 
                     logger.info(f"✅ [{sig['symbol']}] Advanced Screening PASSED: {screen_reason}")
+                    else:
+                        logger.warning(f"⚠️ [{sig['symbol']}] SCREENING BYPASSED - Test/Manual trade")
+                        screen_reason = "BYPASSED"
                     
                     # Log screening passed to dashboard
                     if self._activity_logger:
@@ -2371,8 +2379,14 @@ class RealtimeBotEngine:
     
     def _place_entry_order(self, symbol: str, direction: str, entry_price: float,
                           stop_loss: float, target: float, quantity: int, reason: str,
-                          ml_signal_id: Optional[str] = None, confidence: float = 95.0):
-        """Place entry order with proper logging"""
+                          ml_signal_id: Optional[str] = None, confidence: float = 95.0,
+                          bypass_screening: bool = False):
+        """
+        Place entry order with proper logging
+        
+        Args:
+            bypass_screening: If True, skip all screening checks (for testing/manual trades)
+        """
         from trading.order_manager import OrderType, TransactionType, ProductType
         
         token_info = self.symbol_tokens.get(symbol)

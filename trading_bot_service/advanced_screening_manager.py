@@ -28,19 +28,20 @@ class AdvancedScreeningConfig:
     """Configuration for Advanced Screening Layer"""
     
     def __init__(self):
+        # 🚀 RELAXED MODE FOR TESTING - Get first trades working!
         # Enable/disable specific levels (for gradual rollout)
-        self.enable_ma_crossover = True          # Level 5
-        self.enable_bb_squeeze = True            # Level 14
-        self.enable_var_limit = True             # Level 15 - CRITICAL
-        self.enable_sr_confluence = True         # Level 19
-        self.enable_gap_analysis = True          # Level 20
-        self.enable_nrb_trigger = True           # Level 21
-        self.enable_tick_indicator = True        # Level 22 - NOW ENABLED (real TICK calculation)
-        self.enable_ml_filter = True             # Level 23 - NOW ENABLED (heuristic scoring)
-        self.enable_retest_logic = True          # Level 24
+        self.enable_ma_crossover = False         # Level 5 - DISABLED for testing
+        self.enable_bb_squeeze = False           # Level 14 - DISABLED for testing
+        self.enable_var_limit = True             # Level 15 - KEEP (safety check)
+        self.enable_sr_confluence = False        # Level 19 - DISABLED for testing
+        self.enable_gap_analysis = False         # Level 20 - DISABLED for testing
+        self.enable_nrb_trigger = False          # Level 21 - DISABLED for testing
+        self.enable_tick_indicator = False       # Level 22 - DISABLED for testing
+        self.enable_ml_filter = False            # Level 23 - DISABLED for testing
+        self.enable_retest_logic = False         # Level 24 - DISABLED (direct entry)
         
-        # Risk parameters
-        self.max_portfolio_var_percent = 15.0    # Maximum 15% portfolio VaR
+        # Risk parameters - RELAXED for testing
+        self.max_portfolio_var_percent = 20.0    # Maximum 20% portfolio VaR (relaxed from 15%)
         self.var_confidence_level = 0.95         # 95% confidence level
         
         # MA Crossover parameters (Level 5)

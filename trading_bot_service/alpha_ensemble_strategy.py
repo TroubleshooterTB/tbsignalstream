@@ -28,35 +28,35 @@ class AlphaEnsembleStrategy:
         # Load strategy parameters (use provided params or optimized defaults)
         params = strategy_params or {}
         
-        # ===== LAYER 1: MARKET REGIME FILTERS =====
-        self.NIFTY_ALIGNMENT_THRESHOLD = params.get('nifty_alignment', 0.0)  # Same direction = 0.0%
-        self.VIX_MAX_THRESHOLD = params.get('vix_max', 22.0)
+        # ===== LAYER 1: MARKET REGIME FILTERS (RELAXED FOR TESTING) =====
+        self.NIFTY_ALIGNMENT_THRESHOLD = params.get('nifty_alignment', 0.0)  # 0.0 = No filter (RELAXED)
+        self.VIX_MAX_THRESHOLD = params.get('vix_max', 35.0)  # 35.0 = Allow high volatility (RELAXED)
         
         # ===== LAYER 2: TREND & RETEST LOGIC =====
         self.EMA_200_PERIOD = 200
         self.EMA_20_PERIOD = 20
         self.VWAP_RETEST_TOLERANCE = 0.1
         
-        # ===== LAYER 3: EXECUTION FILTERS (USER-OPTIMIZED) =====
-        self.ADX_MIN_TRENDING = params.get('adx_threshold', 25)
+        # ===== LAYER 3: EXECUTION FILTERS (RELAXED FOR TESTING) =====
+        self.ADX_MIN_TRENDING = params.get('adx_threshold', 20)  # Relaxed from 25 → 20
         self.ADX_PERIOD = 14
-        self.VOLUME_MULTIPLIER = params.get('volume_multiplier', 2.5)
+        self.VOLUME_MULTIPLIER = params.get('volume_multiplier', 1.5)  # Relaxed from 2.5 → 1.5
         self.RSI_PERIOD = 14
         
-        # RSI Sweet Spots (USER-OPTIMIZED)
-        rsi_oversold = params.get('rsi_oversold', 35)
+        # RSI Sweet Spots (RELAXED)
+        rsi_oversold = params.get('rsi_oversold', 30)  # Relaxed from 35 → 30
         rsi_overbought = params.get('rsi_overbought', 70)
-        self.RSI_LONG_MIN = rsi_oversold  # LONG: RSI 35-70
+        self.RSI_LONG_MIN = 50  # LONG: RSI 50-70 (RELAXED)
         self.RSI_LONG_MAX = rsi_overbought
-        self.RSI_SHORT_MIN = 100 - rsi_overbought  # SHORT: RSI 30-65 (inverted)
-        self.RSI_SHORT_MAX = 100 - rsi_oversold
+        self.RSI_SHORT_MIN = 30  # SHORT: RSI 30-50 (RELAXED)
+        self.RSI_SHORT_MAX = 50
         
-        # Distance from EMA
-        self.MAX_DISTANCE_FROM_50EMA = 1.5
+        # Distance from EMA (RELAXED)
+        self.MAX_DISTANCE_FROM_50EMA = 3.0  # Relaxed from 1.5 → 3.0
         
-        # ATR Window
-        self.ATR_MIN_PERCENT = 0.15
-        self.ATR_MAX_PERCENT = 4.0
+        # ATR Window (RELAXED)
+        self.ATR_MIN_PERCENT = 0.08  # Relaxed from 0.15 → 0.08
+        self.ATR_MAX_PERCENT = 6.0   # Relaxed from 4.0 → 6.0
         self.ATR_PERIOD = 14
         
         # ===== POSITION & RISK MANAGEMENT (USER-OPTIMIZED) =====

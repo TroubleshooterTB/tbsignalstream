@@ -1,0 +1,17 @@
+2026-01-31 00:51:47,012 - __main__ - INFO - ======================================================================
+2026-01-31 00:51:47,025 - __main__ - INFO - ======================================================================
+2026-01-31 00:51:47,025 - __main__ - INFO - User: default_user
+2026-01-31 00:51:47,025 - __main__ - INFO - Initial Pair: BTC
+2026-01-31 00:51:47,025 - __main__ - INFO - Time: 2026-01-31 00:51:47
+2026-01-31 00:51:47,025 - __main__ - INFO - ======================================================================
+2026-01-31 00:51:48,817 - __main__ - INFO -    API Key: 043dce2b...
+2026-01-31 00:51:48,828 - trading_bot_service.crypto_bot_engine - INFO -    Active pair: BTC (BTCUSDT)
+2026-01-31 00:51:48,828 - trading_bot_service.crypto_bot_engine - INFO -    Day Strategy: Momentum Scalping (5m candles, Triple EMA + RSI)
+2026-01-31 00:51:48,828 - trading_bot_service.crypto_bot_engine - INFO -    Night Strategy: Mean Reversion (1h candles, Bollinger Bands + RSI)
+2026-01-31 00:51:48,828 - trading_bot_service.crypto_bot_engine - INFO -    Risk Management: 25.0% target volatility
+2026-01-31 00:51:48,829 - trading_bot_service.crypto_bot_engine - INFO - ============================================================
+2026-01-31 00:51:48,830 - trading_bot_service.crypto_bot_engine - INFO - ============================================================
+2026-01-31 00:51:48,830 - trading_bot_service.crypto_bot_engine - INFO - User: default_user
+2026-01-31 00:51:48,830 - trading_bot_service.crypto_bot_engine - INFO - Trading Pair: BTC (BTCUSDT)
+2026-01-31 00:51:48,830 - trading_bot_service.crypto_bot_engine - INFO - Time: 2026-01-31 00:51:48
+2026-01-31 00:51:48,830 - trading_bot_service.crypto_bot_engine - INFO - ============================================================

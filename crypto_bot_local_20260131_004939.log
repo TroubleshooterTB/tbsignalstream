@@ -1,0 +1,13 @@
+2026-01-31 00:49:39,962 - __main__ - INFO - ======================================================================
+2026-01-31 00:49:39,965 - __main__ - INFO - ======================================================================
+2026-01-31 00:49:39,965 - __main__ - INFO - User: default_user
+2026-01-31 00:49:39,965 - __main__ - INFO - Initial Pair: BTC
+2026-01-31 00:49:39,966 - __main__ - INFO - Time: 2026-01-31 00:49:39
+2026-01-31 00:49:39,966 - __main__ - INFO - ======================================================================
+2026-01-31 00:49:41,851 - __main__ - ERROR -    Please add credentials for user 'default_user' to Firestore
+2026-01-31 00:49:41,851 - __main__ - ERROR -    Collection: coindcx_credentials
+2026-01-31 00:49:41,851 - __main__ - ERROR -    Document: default_user
+2026-01-31 00:49:41,851 - __main__ - ERROR -    Fields:
+2026-01-31 00:49:41,851 - __main__ - ERROR -      - api_key: <your_coindcx_api_key>
+2026-01-31 00:49:41,851 - __main__ - ERROR -      - api_secret_encrypted: <encrypted_secret>
+2026-01-31 00:49:41,851 - __main__ - ERROR -      - enabled: true

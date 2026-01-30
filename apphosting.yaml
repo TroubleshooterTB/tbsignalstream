@@ -21,6 +21,10 @@ env:
   - variable: ANGELONE_TOTP_SECRET
     secret: ANGELONE_TOTP_SECRET
 
+  # Crypto Bot Credentials Encryption Key
+  - variable: CREDENTIALS_ENCRYPTION_KEY
+    secret: CREDENTIALS_ENCRYPTION_KEY
+
   # Firebase web app config (JSON). Provide this as a secret with availability BUILD and RUNTIME.
   - variable: FIREBASE_WEBAPP_CONFIG
     secret: FIREBASE_WEBAPP_CONFIG

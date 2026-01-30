@@ -229,13 +229,37 @@ class RealtimeBotEngine:
             
             # CRITICAL: Fail fast if WebSocket didn't connect in live mode
             if self.trading_mode == 'live' and (not self.ws_manager or not hasattr(self.ws_manager, 'is_connected') or not getattr(self.ws_manager, 'is_connected', False)):
+                logger.error("="*80)
                 logger.error("❌ CRITICAL: WebSocket connection failed in LIVE mode")
-                logger.error("❌ Cannot trade with real money without real-time data")
+                logger.error("="*80)
+                logger.error("🚨 CANNOT TRADE LIVE WITHOUT REAL-TIME DATA")
+                logger.error("")
+                logger.error("🔧 IMMEDIATE ACTIONS REQUIRED:")
+                logger.error("   1. Go to Dashboard → Settings → Connect Angel One")
+                logger.error("   2. Login and authorize to get fresh tokens")
+                logger.error("   3. Wait 30 seconds, then restart bot")
+                logger.error("")
+                logger.error("💡 WHY THIS HAPPENED:")
+                logger.error("   • Angel One tokens expire every 24 hours")
+                logger.error("   • WebSocket needs valid feed_token and jwt_token")
+                logger.error("   • Reconnecting refreshes all credentials")
+                logger.error("="*80)
                 raise Exception("CRITICAL: WebSocket connection failed - cannot trade live without real-time data")
             elif self.trading_mode == 'paper' and (not self.ws_manager or not hasattr(self.ws_manager, 'is_connected') or not getattr(self.ws_manager, 'is_connected', False)):
-                logger.warning("⚠️  WebSocket connection failed in PAPER mode")
-                logger.warning("⚠️  Bot will continue without real-time data - position monitoring disabled")
-                logger.warning("⚠️  This is OK for testing but signals will be delayed")
+                logger.warning("="*80)
+                logger.warning("⚠️  DEGRADED MODE: WebSocket connection failed in PAPER mode")
+                logger.warning("="*80)
+                logger.warning("📊 IMPACT:")
+                logger.warning("   • Position monitoring: DISABLED")
+                logger.warning("   • Stop loss tracking: MANUAL only")
+                logger.warning("   • Target tracking: MANUAL only")
+                logger.warning("   • Signals still generate: YES (from historical candles)")
+                logger.warning("")
+                logger.warning("✅ HOW TO FIX:")
+                logger.warning("   1. Dashboard → Settings → Connect Angel One")
+                logger.warning("   2. Get fresh tokens (expires every 24 hours)")
+                logger.warning("   3. Restart bot to reconnect WebSocket")
+                logger.warning("="*80)
             
             # Step 4: Bootstrap historical candle data (CRITICAL FIX)
             # Without this, bot needs 200 minutes to accumulate candles for indicators!
@@ -253,8 +277,19 @@ class RealtimeBotEngine:
                 # GRACEFUL DEGRADATION: Allow bot to continue even without bootstrap
                 # Bot will accumulate candles from live WebSocket ticks
                 if len(self.candle_data) == 0:
-                    logger.warning("⚠️  No historical candles loaded - bot will build from live ticks")
-                    logger.warning("⚠️  Signals will start generating after ~200 minutes of data accumulation")
+                    logger.warning("="*80)
+                    logger.warning("⚠️  DEGRADED MODE: No historical candles loaded")
+                    logger.warning("="*80)
+                    logger.warning("📊 WHAT THIS MEANS:")
+                    logger.warning("   • Bot will build candles from live WebSocket ticks")
+                    logger.warning("   • Signals will start after ~200 minutes (3+ hours)")
+                    logger.warning("   • Bot is still working - just slower to start")
+                    logger.warning("")
+                    logger.warning("✅ HOW TO FIX FOR NEXT TIME:")
+                    logger.warning("   1. Start bot AFTER 9:30 AM (market already open)")
+                    logger.warning("   2. Check Angel One API is accessible")
+                    logger.warning("   3. Verify not hitting rate limits")
+                    logger.warning("="*80)
                     # Don't raise exception - let bot continue
             
             # Step 5: Subscribe to symbols (only if WebSocket is active)
@@ -299,11 +334,65 @@ class RealtimeBotEngine:
                 logger.error(f"❌ Pre-trade verification failed: {e}")
                 raise
             
-            # Step 9: Main strategy execution loop (runs every 5 seconds)
-            logger.info("🚀 Real-time trading bot started successfully!")
-            logger.info("Position monitoring: Every 0.5 seconds")
-            logger.info("Strategy analysis: Every 5 seconds")
-            logger.info(f"Data updates: {'Real-time via WebSocket' if self.ws_manager else 'Polling mode'}")
+            # Step 9: Print comprehensive startup status summary
+            logger.info("="*80)
+            logger.info("🚀 BOT STARTUP COMPLETE")
+            logger.info("="*80)
+            
+            # System status
+            ws_status = "✅ Connected" if (self.ws_manager and hasattr(self.ws_manager, 'is_connected') and getattr(self.ws_manager, 'is_connected', False)) else "❌ Not Connected"
+            candles_status = f"✅ Loaded ({len(self.candle_data)} symbols)" if len(self.candle_data) > 0 else "⚠️  Building from ticks"
+            prices_status = f"✅ Flowing ({len(self.latest_prices)} symbols)" if len(self.latest_prices) > 0 else "⚠️  Waiting for data"
+            
+            logger.info(f"📊 SYSTEM STATUS:")
+            logger.info(f"   WebSocket: {ws_status}")
+            logger.info(f"   Historical Candles: {candles_status}")
+            logger.info(f"   Live Prices: {prices_status}")
+            logger.info(f"   Symbol Tokens: ✅ {len(self.symbol_tokens)} loaded")
+            logger.info("")
+            logger.info(f"⚙️  CONFIGURATION:")
+            logger.info(f"   Strategy: {self.strategy.upper()}")
+            logger.info(f"   Mode: {self.trading_mode.upper()}")
+            logger.info(f"   Symbols: {len(self.symbols)}")
+            logger.info("")
+            logger.info(f"🔄 MONITORING:")
+            logger.info(f"   Position checks: Every 0.5 seconds")
+            logger.info(f"   Strategy scans: Every 5 seconds")
+            logger.info(f"   Data updates: {'Real-time (WebSocket)' if self.ws_manager else 'Historical only'}")
+            
+            # Warnings summary
+            warnings_present = False
+            if not (self.ws_manager and hasattr(self.ws_manager, 'is_connected') and getattr(self.ws_manager, 'is_connected', False)):
+                if not warnings_present:
+                    logger.warning("")
+                    logger.warning("⚠️  ACTIVE WARNINGS:")
+                    warnings_present = True
+                logger.warning("   • WebSocket not connected - Position monitoring disabled")
+                logger.warning("   • Action: Reconnect Angel One in Dashboard Settings")
+            
+            if len(self.candle_data) == 0:
+                if not warnings_present:
+                    logger.warning("")
+                    logger.warning("⚠️  ACTIVE WARNINGS:")
+                    warnings_present = True
+                logger.warning("   • No historical candles - Signals will take 200+ minutes")
+                logger.warning("   • Action: Start bot after 9:30 AM for immediate signals")
+            
+            if len(self.latest_prices) == 0:
+                if not warnings_present:
+                    logger.warning("")
+                    logger.warning("⚠️  ACTIVE WARNINGS:")
+                    warnings_present = True
+                logger.warning("   • No live prices yet - Wait for market open or WebSocket")
+                logger.warning("   • Action: Check market hours (9:15 AM - 3:30 PM IST)")
+            
+            if not warnings_present:
+                logger.info("")
+                logger.info("✅ ALL SYSTEMS OPERATIONAL - No warnings")
+            
+            logger.info("="*80)
+            logger.info("🎯 Bot is now monitoring markets...")
+            logger.info("="*80)
             
             error_count = 0
             max_consecutive_errors = 10  # Stop only after 10 consecutive errors

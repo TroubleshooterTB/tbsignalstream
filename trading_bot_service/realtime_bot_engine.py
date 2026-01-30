@@ -229,7 +229,13 @@ class RealtimeBotEngine:
             
             # CRITICAL: Fail fast if WebSocket didn't connect in live mode
             if self.trading_mode == 'live' and (not self.ws_manager or not hasattr(self.ws_manager, 'is_connected') or not getattr(self.ws_manager, 'is_connected', False)):
+                logger.error("❌ CRITICAL: WebSocket connection failed in LIVE mode")
+                logger.error("❌ Cannot trade with real money without real-time data")
                 raise Exception("CRITICAL: WebSocket connection failed - cannot trade live without real-time data")
+            elif self.trading_mode == 'paper' and (not self.ws_manager or not hasattr(self.ws_manager, 'is_connected') or not getattr(self.ws_manager, 'is_connected', False)):
+                logger.warning("⚠️  WebSocket connection failed in PAPER mode")
+                logger.warning("⚠️  Bot will continue without real-time data - position monitoring disabled")
+                logger.warning("⚠️  This is OK for testing but signals will be delayed")
             
             # Step 4: Bootstrap historical candle data (CRITICAL FIX)
             # Without this, bot needs 200 minutes to accumulate candles for indicators!
@@ -244,9 +250,12 @@ class RealtimeBotEngine:
                 logger.error(f"❌ [CRITICAL] Error type: {type(e).__name__}")
                 logger.error(f"❌ [CRITICAL] Error details: {str(e)}")
                 logger.warning("⚠️  Bot will need 200+ minutes to build candles from ticks")
-                # Fail fast if bootstrap completely failed
+                # GRACEFUL DEGRADATION: Allow bot to continue even without bootstrap
+                # Bot will accumulate candles from live WebSocket ticks
                 if len(self.candle_data) == 0:
-                    raise Exception("CRITICAL: Bootstrap failed - cannot analyze without historical candles")
+                    logger.warning("⚠️  No historical candles loaded - bot will build from live ticks")
+                    logger.warning("⚠️  Signals will start generating after ~200 minutes of data accumulation")
+                    # Don't raise exception - let bot continue
             
             # Step 5: Subscribe to symbols (only if WebSocket is active)
             if self.ws_manager:
@@ -998,11 +1007,16 @@ class RealtimeBotEngine:
         # Bot should still be allowed to start - it will build candles from live ticks
         is_before_market_open = now < market_open_time
         
+        # RELAXED CHECKS: Only fail on truly critical issues
         checks = {
+            'has_tokens': len(self.symbol_tokens) > 0,  # CRITICAL: Must have tokens
+        }
+        
+        # Optional checks (warnings only)
+        warnings = {
             'websocket_connected': self.ws_manager and hasattr(self.ws_manager, 'is_connected') and getattr(self.ws_manager, 'is_connected', False),
             'has_prices': len(self.latest_prices) > 0,
-            'has_candles': len(self.candle_data) >= len(self.symbol_tokens) * 0.5 if not is_before_market_open else True,  # Require candles only after market open
-            'has_tokens': len(self.symbol_tokens) > 0,
+            'has_candles': len(self.candle_data) > 0,
         }
         
         logger.info("🔍 PRE-TRADE VERIFICATION:")
@@ -1010,18 +1024,35 @@ class RealtimeBotEngine:
             icon = "✅" if status else "❌"
             logger.info(f"  {icon} {check}: {status}")
         
-        # Add warning if starting without candles
-        if len(self.candle_data) == 0:
-            logger.warning("⚠️  Bot starting WITHOUT historical candles (will build from live ticks)")
-            logger.warning("⚠️  Signals will only generate after accumulating 200+ candles (~3-4 hours)")
+        for check, status in warnings.items():
+            icon = "✅" if status else "⚠️ "
+            logger.info(f"  {icon} {check}: {status}")
         
+        # Issue warnings for non-critical failures
+        if not warnings['websocket_connected']:
+            logger.warning("⚠️  WebSocket not connected - position monitoring disabled")
+            logger.warning("⚠️  Bot will still generate signals but won't monitor exits")
+        
+        if not warnings['has_prices']:
+            logger.warning("⚠️  No price data yet - wait for WebSocket ticks or market to open")
+        
+        if not warnings['has_candles']:
+            logger.warning("⚠️  No historical candles - bot will build from live ticks")
+            logger.warning("⚠️  Signals will start generating after ~200 minutes of data")
+        
+        # Only fail on critical checks
         if not all(checks.values()):
             failed = [k for k, v in checks.items() if not v]
-            error_msg = f"Bot not ready to trade. Failed checks: {', '.join(failed)}"
+            error_msg = f"Bot cannot start. Critical failures: {', '.join(failed)}"
             logger.error(f"❌ {error_msg}")
             raise Exception(error_msg)
         
-        logger.info("✅ ALL CHECKS PASSED - Bot ready to trade!")
+        if all(warnings.values()):
+            logger.info("✅ ALL CHECKS PASSED - Bot fully ready to trade!")
+        else:
+            logger.warning("⚠️  SOME CHECKS FAILED - Bot will start with degraded functionality")
+            logger.warning("⚠️  Monitor bot logs for issues - functionality will improve as data accumulates")
+        
         return True
     
     def _load_bot_config(self) -> Dict:

@@ -148,18 +148,6 @@ class RealtimeBotEngine:
         
         # Control flags
         self.is_running = False
-        
-        # 🏥 PRODUCTION-GRADE SELF-HEALING
-        self.ws_reconnect_attempts = 0
-        self.max_ws_reconnect_attempts = 10
-        self.ws_reconnect_delay = 1  # Start with 1 second
-        self.max_ws_reconnect_delay = 300  # Max 5 minutes
-        self.last_ws_reconnect_time = None
-        self.api_retry_count = {}
-        self.max_api_retries = 3
-        self.token_expiry_warned = False
-        self.last_health_check = None
-        self.health_check_interval = 60  # Check every minute
         self._monitoring_thread = None
         self._candle_builder_thread = None
         self.bot_start_time = datetime.now()
@@ -179,9 +167,6 @@ class RealtimeBotEngine:
             
             # CRITICAL: Check if tokens are expired before starting
             self._check_and_refresh_tokens()
-            
-            # 🆕 LOAD USER PREFERENCES FROM FIRESTORE
-            self._load_user_preferences()
             
             # 🔄 REPLAY MODE: Use simulation instead of real-time trading
             if self.is_replay_mode:
@@ -225,71 +210,40 @@ class RealtimeBotEngine:
             self._initialize_managers()
             logger.info("✅ [DEBUG] Trading managers initialized successfully")
             
-            # Step 3: Initialize WebSocket connection - WITH AUTOMATIC RECOVERY
+            # Step 3: Initialize WebSocket connection - WITH ERROR HANDLING
             logger.info("🔌 [DEBUG] Initializing WebSocket connection...")
             try:
                 logger.info("🔌 [DEBUG] About to call _initialize_websocket()...")
-                self._initialize_websocket_with_retry()
+                self._initialize_websocket()
                 logger.info("✅ [DEBUG] WebSocket initialized and connected")
                 # NOTE: We'll verify data flow AFTER subscribing to symbols (Step 5)
                     
             except Exception as e:
-                logger.error(f"❌ [DEBUG] WebSocket initialization failed after all retries: {e}", exc_info=True)
+                logger.error(f"❌ [DEBUG] WebSocket initialization failed: {e}", exc_info=True)
                 logger.warning("⚠️  [DEBUG] Bot will continue with polling mode (no real-time ticks)")
                 logger.warning("⚠️  Position monitoring will NOT work without WebSocket")
                 self.ws_manager = None  # Bot will run without WebSocket
             
             # CRITICAL: Fail fast if WebSocket didn't connect in live mode
             if self.trading_mode == 'live' and (not self.ws_manager or not hasattr(self.ws_manager, 'is_connected') or not getattr(self.ws_manager, 'is_connected', False)):
-                logger.error("="*80)
-                logger.error("❌ CRITICAL: WebSocket connection failed in LIVE mode")
-                logger.error("="*80)
-                logger.error("🚨 CANNOT TRADE LIVE WITHOUT REAL-TIME DATA")
-                logger.error("")
-                logger.error("🔧 IMMEDIATE ACTIONS REQUIRED:")
-                logger.error("   1. Go to Dashboard → Settings → Connect Angel One")
-                logger.error("   2. Login and authorize to get fresh tokens")
-                logger.error("   3. Wait 30 seconds, then restart bot")
-                logger.error("")
-                logger.error("💡 WHY THIS HAPPENED:")
-                logger.error("   • Angel One tokens expire every 24 hours")
-                logger.error("   • WebSocket needs valid feed_token and jwt_token")
-                logger.error("   • Reconnecting refreshes all credentials")
-                logger.error("="*80)
                 raise Exception("CRITICAL: WebSocket connection failed - cannot trade live without real-time data")
-            elif self.trading_mode == 'paper' and (not self.ws_manager or not hasattr(self.ws_manager, 'is_connected') or not getattr(self.ws_manager, 'is_connected', False)):
-                logger.warning("="*80)
-                logger.warning("⚠️  DEGRADED MODE: WebSocket connection failed in PAPER mode")
-                logger.warning("="*80)
-                logger.warning("📊 IMPACT:")
-                logger.warning("   • Position monitoring: DISABLED")
-                logger.warning("   • Stop loss tracking: MANUAL only")
-                logger.warning("   • Target tracking: MANUAL only")
-                logger.warning("   • Signals still generate: YES (from historical candles)")
-                logger.warning("")
-                logger.warning("✅ HOW TO FIX:")
-                logger.warning("   1. Dashboard → Settings → Connect Angel One")
-                logger.warning("   2. Get fresh tokens (expires every 24 hours)")
-                logger.warning("   3. Restart bot to reconnect WebSocket")
-                logger.warning("="*80)
             
-            # Step 4: Bootstrap historical candle data - WITH AUTOMATIC RETRY
+            # Step 4: Bootstrap historical candle data (CRITICAL FIX)
             # Without this, bot needs 200 minutes to accumulate candles for indicators!
             logger.info("📊 [CRITICAL] Bootstrapping historical candle data...")
-            logger.info("📊 [CRITICAL] About to call _bootstrap_historical_candles_with_retry()...")
+            logger.info("📊 [CRITICAL] About to call _bootstrap_historical_candles()...")
             try:
                 logger.info("📊 [CRITICAL] Calling bootstrap function NOW...")
-                self._bootstrap_historical_candles_with_retry()
+                self._bootstrap_historical_candles()
                 logger.info("✅ [CRITICAL] Historical candles loaded - bot ready to trade immediately!")
             except Exception as e:
-                logger.error(f"❌ [CRITICAL] Failed to bootstrap historical data after retries: {e}")
-                logger.warning("⚠️  Bot will build candles from ticks (auto-recovery in ~200 minutes)")
-                # AUTOMATIC RECOVERY: Bot continues and will self-heal once data accumulates
+                logger.error(f"❌ [CRITICAL] Failed to bootstrap historical data: {e}", exc_info=True)
+                logger.error(f"❌ [CRITICAL] Error type: {type(e).__name__}")
+                logger.error(f"❌ [CRITICAL] Error details: {str(e)}")
+                logger.warning("⚠️  Bot will need 200+ minutes to build candles from ticks")
+                # Fail fast if bootstrap completely failed
                 if len(self.candle_data) == 0:
-                    logger.info("🔄 SELF-HEALING MODE: Building candles from live ticks")
-                    logger.info("⏳ Expected recovery: ~200 minutes")
-                    logger.info("✅ Bot is healthy - automatic recovery in progress")
-                    # Don't raise exception - bot will self-heal
+                    raise Exception("CRITICAL: Bootstrap failed - cannot analyze without historical candles")
             
             # Step 5: Subscribe to symbols (only if WebSocket is active)
             if self.ws_manager:
@@ -325,14 +279,6 @@ class RealtimeBotEngine:
             )
             self._candle_builder_thread.start()
             
-            # Step 7.5: Start health monitoring thread (checks every minute)
-            logger.info("🏥 Starting health monitoring thread...")
-            self._health_thread = threading.Thread(
-                target=self._health_check_loop,
-                daemon=True
-            )
-            self._health_thread.start()
-            
             # Step 8: Final verification before trading
             logger.info("🔍 Running final pre-trade verification...")
             try:
@@ -341,69 +287,14 @@ class RealtimeBotEngine:
                 logger.error(f"❌ Pre-trade verification failed: {e}")
                 raise
             
-            # Step 9: Print comprehensive startup status summary
-            logger.info("="*80)
-            logger.info("🚀 BOT STARTUP COMPLETE")
-            logger.info("="*80)
-            
-            # System status
-            ws_status = "✅ Connected" if (self.ws_manager and hasattr(self.ws_manager, 'is_connected') and getattr(self.ws_manager, 'is_connected', False)) else "❌ Not Connected"
-            candles_status = f"✅ Loaded ({len(self.candle_data)} symbols)" if len(self.candle_data) > 0 else "⚠️  Building from ticks"
-            prices_status = f"✅ Flowing ({len(self.latest_prices)} symbols)" if len(self.latest_prices) > 0 else "⚠️  Waiting for data"
-            
-            logger.info(f"📊 SYSTEM STATUS:")
-            logger.info(f"   WebSocket: {ws_status}")
-            logger.info(f"   Historical Candles: {candles_status}")
-            logger.info(f"   Live Prices: {prices_status}")
-            logger.info(f"   Symbol Tokens: ✅ {len(self.symbol_tokens)} loaded")
-            logger.info("")
-            logger.info(f"⚙️  CONFIGURATION:")
-            logger.info(f"   Strategy: {self.strategy.upper()}")
-            logger.info(f"   Mode: {self.trading_mode.upper()}")
-            logger.info(f"   Symbols: {len(self.symbols)}")
-            logger.info("")
-            logger.info(f"🔄 MONITORING:")
-            logger.info(f"   Position checks: Every 0.5 seconds")
-            logger.info(f"   Strategy scans: Every 5 seconds")
-            logger.info(f"   Data updates: {'Real-time (WebSocket)' if self.ws_manager else 'Historical only'}")
-            
-            # Warnings summary
-            warnings_present = False
-            if not (self.ws_manager and hasattr(self.ws_manager, 'is_connected') and getattr(self.ws_manager, 'is_connected', False)):
-                if not warnings_present:
-                    logger.warning("")
-                    logger.warning("⚠️  ACTIVE WARNINGS:")
-                    warnings_present = True
-                logger.warning("   • WebSocket not connected - Position monitoring disabled")
-                logger.warning("   • Action: Reconnect Angel One in Dashboard Settings")
-            
-            if len(self.candle_data) == 0:
-                if not warnings_present:
-                    logger.warning("")
-                    logger.warning("⚠️  ACTIVE WARNINGS:")
-                    warnings_present = True
-                logger.warning("   • No historical candles - Signals will take 200+ minutes")
-                logger.warning("   • Action: Start bot after 9:30 AM for immediate signals")
-            
-            if len(self.latest_prices) == 0:
-                if not warnings_present:
-                    logger.warning("")
-                    logger.warning("⚠️  ACTIVE WARNINGS:")
-                    warnings_present = True
-                logger.warning("   • No live prices yet - Wait for market open or WebSocket")
-                logger.warning("   • Action: Check market hours (9:15 AM - 3:30 PM IST)")
-            
-            if not warnings_present:
-                logger.info("")
-                logger.info("✅ ALL SYSTEMS OPERATIONAL - No warnings")
-            
-            logger.info("="*80)
-            logger.info("🎯 Bot is now monitoring markets...")
-            logger.info("="*80)
+            # Step 9: Main strategy execution loop (runs every 5 seconds)
+            logger.info("🚀 Real-time trading bot started successfully!")
+            logger.info("Position monitoring: Every 0.5 seconds")
+            logger.info("Strategy analysis: Every 5 seconds")
+            logger.info(f"Data updates: {'Real-time via WebSocket' if self.ws_manager else 'Polling mode'}")
             
             error_count = 0
             max_consecutive_errors = 10  # Stop only after 10 consecutive errors
-            scan_count = 0
             
             while running_flag() and self.is_running:
                 try:
@@ -419,11 +310,6 @@ class RealtimeBotEngine:
                             break
                     except Exception as stop_check_err:
                         logger.debug(f"Emergency stop check error (non-critical): {stop_check_err}")
-                    
-                    # 🏥 HEALTH CHECK: Check token expiry every 60 scans (~5 minutes)
-                    scan_count += 1
-                    if scan_count % 60 == 0:
-                        self._detect_token_expiry()
                     
                     cycle_start = time.time()
                     
@@ -1109,16 +995,11 @@ class RealtimeBotEngine:
         # Bot should still be allowed to start - it will build candles from live ticks
         is_before_market_open = now < market_open_time
         
-        # RELAXED CHECKS: Only fail on truly critical issues
         checks = {
-            'has_tokens': len(self.symbol_tokens) > 0,  # CRITICAL: Must have tokens
-        }
-        
-        # Optional checks (warnings only)
-        warnings = {
             'websocket_connected': self.ws_manager and hasattr(self.ws_manager, 'is_connected') and getattr(self.ws_manager, 'is_connected', False),
             'has_prices': len(self.latest_prices) > 0,
-            'has_candles': len(self.candle_data) > 0,
+            'has_candles': len(self.candle_data) >= len(self.symbol_tokens) * 0.5 if not is_before_market_open else True,  # Require candles only after market open
+            'has_tokens': len(self.symbol_tokens) > 0,
         }
         
         logger.info("🔍 PRE-TRADE VERIFICATION:")
@@ -1126,35 +1007,18 @@ class RealtimeBotEngine:
             icon = "✅" if status else "❌"
             logger.info(f"  {icon} {check}: {status}")
         
-        for check, status in warnings.items():
-            icon = "✅" if status else "⚠️ "
-            logger.info(f"  {icon} {check}: {status}")
+        # Add warning if starting without candles
+        if len(self.candle_data) == 0:
+            logger.warning("⚠️  Bot starting WITHOUT historical candles (will build from live ticks)")
+            logger.warning("⚠️  Signals will only generate after accumulating 200+ candles (~3-4 hours)")
         
-        # Issue warnings for non-critical failures
-        if not warnings['websocket_connected']:
-            logger.warning("⚠️  WebSocket not connected - position monitoring disabled")
-            logger.warning("⚠️  Bot will still generate signals but won't monitor exits")
-        
-        if not warnings['has_prices']:
-            logger.warning("⚠️  No price data yet - wait for WebSocket ticks or market to open")
-        
-        if not warnings['has_candles']:
-            logger.warning("⚠️  No historical candles - bot will build from live ticks")
-            logger.warning("⚠️  Signals will start generating after ~200 minutes of data")
-        
-        # Only fail on critical checks
         if not all(checks.values()):
             failed = [k for k, v in checks.items() if not v]
-            error_msg = f"Bot cannot start. Critical failures: {', '.join(failed)}"
+            error_msg = f"Bot not ready to trade. Failed checks: {', '.join(failed)}"
             logger.error(f"❌ {error_msg}")
             raise Exception(error_msg)
         
-        if all(warnings.values()):
-            logger.info("✅ ALL CHECKS PASSED - Bot fully ready to trade!")
-        else:
-            logger.warning("⚠️  SOME CHECKS FAILED - Bot will start with degraded functionality")
-            logger.warning("⚠️  Monitor bot logs for issues - functionality will improve as data accumulates")
-        
+        logger.info("✅ ALL CHECKS PASSED - Bot ready to trade!")
         return True
     
     def _load_bot_config(self) -> Dict:
@@ -1244,15 +1108,6 @@ class RealtimeBotEngine:
             portfolio_value=portfolio_value  # ✅ Use actual portfolio value
         )
         logger.info("✅ Advanced Screening Manager initialized (fail-safe mode: ON, TICK: ON)")
-        
-        # 🆕 APPLY SAVED SCREENING PRESET (if loaded from Firestore)
-        if hasattr(self, '_screening_preset'):
-            try:
-                from screening_presets import apply_preset_to_screening
-                apply_preset_to_screening(self._advanced_screening, self._screening_preset)
-                logger.info(f"✅ Applied saved screening preset: {self._screening_preset.name}")
-            except Exception as e:
-                logger.error(f"Error applying screening preset: {e}")
         
         # NEW: Initialize ML Data Logger
         try:
@@ -1393,15 +1248,14 @@ class RealtimeBotEngine:
                     logger.debug(f"📝 PAPER MODE: Analyzing outside market hours (testing mode)")
                     # Continue execution
             
-            # 🚨 DISABLED FOR TESTING - Liquidity U-Shape Time Filter
-            # TODO: Re-enable after validation with: if datetime_time(12, 0) <= current_time <= datetime_time(14, 30):
-            # import pytz
-            # ist = pytz.timezone('Asia/Kolkata')
-            # current_time = datetime.now(ist).time()
-            # if datetime_time(12, 0) <= current_time <= datetime_time(14, 30):
-            #     logger.debug("⏸️  LIQUIDITY FILTER: Skipping 12:00-14:30 (midday U-shape dip - 12.5% WR trap)")
-            #     return
-            logger.debug("⚠️  LIQUIDITY FILTER DISABLED - Testing mode (will re-enable after validation)")
+            # 🚨 AUDIT FIX: Liquidity U-Shape Time Filter
+            # Block entries during 12:00-14:30 PM (midday liquidity trap)
+            import pytz
+            ist = pytz.timezone('Asia/Kolkata')
+            current_time = datetime.now(ist).time()
+            if datetime_time(12, 0) <= current_time <= datetime_time(14, 30):
+                logger.debug("⏸️  LIQUIDITY FILTER: Skipping 12:00-14:30 (midday U-shape dip - 12.5% WR trap)")
+                return
             
             # Check EOD auto-close (3:15 PM for safety before broker's 3:20 PM)
             self._check_eod_auto_close()
@@ -1921,56 +1775,49 @@ class RealtimeBotEngine:
                         'score': sig['confidence']
                     }
                     
-                    # 🧪 BYPASS SCREENING FOR TEST/MANUAL TRADES
-                    bypass_screening = signal_data.get('bypass_screening', False)
+                    is_screened, screen_reason = self._advanced_screening.validate_signal(
+                        symbol=sig['symbol'],
+                        signal_data=signal_data,
+                        df=candle_data_copy[sig['symbol']],
+                        current_positions=self._position_manager.get_all_positions(),
+                        current_price=sig['current_price']
+                    )
                     
-                    if not bypass_screening:
-                        is_screened, screen_reason = self._advanced_screening.validate_signal(
-                            symbol=sig['symbol'],
-                            signal_data=signal_data,
-                            df=candle_data_copy[sig['symbol']],
-                            current_positions=self._position_manager.get_all_positions(),
-                            current_price=sig['current_price']
-                        )
+                    if not is_screened:
+                        logger.warning(f"❌ [{sig['symbol']}] Advanced Screening BLOCKED: {screen_reason}")
                         
-                        if not is_screened:
-                            logger.warning(f"❌ [{sig['symbol']}] Advanced Screening BLOCKED: {screen_reason}")
-                            
-                            # Log screening failed to dashboard
-                            if self._activity_logger:
-                                self._activity_logger.log_screening_failed(
-                                    symbol=sig['symbol'],
-                                    pattern=sig['pattern_details'].get('pattern_name', 'Unknown'),
-                                    reason=screen_reason
-                                )
-                            
-                            # Log rejected signal for ML training
-                            if self._ml_logger and self._ml_logger.enabled:
-                                try:
-                                    df_latest = candle_data_copy[sig['symbol']].iloc[-1]
-                                    rejected_signal_data = {
-                                        'symbol': sig['symbol'],
-                                        'action': signal_data['action'],
-                                        'entry_price': sig['current_price'],
-                                        'stop_loss': sig['stop_loss'],
-                                        'target': sig['target'],
-                                        'rsi': df_latest.get('rsi', 50),
-                                        'macd': df_latest.get('macd', 0),
-                                        'macd_signal': df_latest.get('macd_signal', 0),
-                                        'adx': df_latest.get('adx', 20),
-                                        'pattern_type': sig['pattern_details'].get('pattern_name', 'Unknown'),
-                                        'confidence': sig['confidence']
-                                    }
-                                    self._ml_logger.log_rejected_signal(rejected_signal_data, screen_reason)
-                                except Exception as log_err:
-                                    logger.debug(f"ML logger (rejected signal) error: {log_err}")
+                        # Log screening failed to dashboard
+                        if self._activity_logger:
+                            self._activity_logger.log_screening_failed(
+                                symbol=sig['symbol'],
+                                pattern=sig['pattern_details'].get('pattern_name', 'Unknown'),
+                                reason=screen_reason
+                            )
+                        
+                        # Log rejected signal for ML training
+                        if self._ml_logger and self._ml_logger.enabled:
+                            try:
+                                df_latest = candle_data_copy[sig['symbol']].iloc[-1]
+                                rejected_signal_data = {
+                                    'symbol': sig['symbol'],
+                                    'action': signal_data['action'],
+                                    'entry_price': sig['current_price'],
+                                    'stop_loss': sig['stop_loss'],
+                                    'target': sig['target'],
+                                    'rsi': df_latest.get('rsi', 50),
+                                    'macd': df_latest.get('macd', 0),
+                                    'macd_signal': df_latest.get('macd_signal', 0),
+                                    'adx': df_latest.get('adx', 20),
+                                    'pattern_type': sig['pattern_details'].get('pattern_name', 'Unknown'),
+                                    'confidence': sig['confidence']
+                                }
+                                self._ml_logger.log_rejected_signal(rejected_signal_data, screen_reason)
+                            except Exception as log_err:
+                                logger.debug(f"ML logger (rejected signal) error: {log_err}")
 
-                            continue  # Skip this trade
+                        continue  # Skip this trade
 
-                        logger.info(f"✅ [{sig['symbol']}] Advanced Screening PASSED: {screen_reason}")
-                    else:
-                        logger.warning(f"⚠️ [{sig['symbol']}] SCREENING BYPASSED - Test/Manual trade")
-                        screen_reason = "BYPASSED"
+                    logger.info(f"✅ [{sig['symbol']}] Advanced Screening PASSED: {screen_reason}")
                     
                     # Log screening passed to dashboard
                     if self._activity_logger:
@@ -2524,14 +2371,8 @@ class RealtimeBotEngine:
     
     def _place_entry_order(self, symbol: str, direction: str, entry_price: float,
                           stop_loss: float, target: float, quantity: int, reason: str,
-                          ml_signal_id: Optional[str] = None, confidence: float = 95.0,
-                          bypass_screening: bool = False):
-        """
-        Place entry order with proper logging
-        
-        Args:
-            bypass_screening: If True, skip all screening checks (for testing/manual trades)
-        """
+                          ml_signal_id: Optional[str] = None, confidence: float = 95.0):
+        """Place entry order with proper logging"""
         from trading.order_manager import OrderType, TransactionType, ProductType
         
         token_info = self.symbol_tokens.get(symbol)
@@ -3682,63 +3523,6 @@ class RealtimeBotEngine:
         except Exception as e:
             logger.error(f"❌ Failed to check token expiry: {e}", exc_info=True)
     
-    def _load_user_preferences(self):
-        """
-        Load user preferences from Firestore and apply them to bot configuration.
-        This includes: screening mode, TradingView settings, notification preferences.
-        """
-        try:
-            if self.db is None:
-                logger.warning("⚠️  No Firestore client - skipping preference loading")
-                return
-            
-            # Load bot config
-            config_doc = self.db.collection('bot_configs').document(self.user_id).get()
-            
-            if config_doc.exists:
-                config_data = config_doc.to_dict()
-                
-                # Apply screening mode
-                screening_mode = config_data.get('screening_mode', 'RELAXED')
-                logger.info(f"📋 Loading screening mode: {screening_mode}")
-                
-                try:
-                    from screening_presets import get_preset, apply_preset_to_screening, apply_preset_to_strategy
-                    
-                    preset = get_preset(screening_mode)
-                    
-                    # Apply to screening manager (will be initialized when first trade happens)
-                    # Store preset for lazy initialization
-                    self._screening_preset = preset
-                    
-                    logger.info(f"✅ Loaded {screening_mode} screening mode")
-                    logger.info(f"   Expected: {preset.expected_signals_per_day} signals/day, {preset.expected_pass_rate*100:.1f}% pass rate")
-                    
-                except Exception as e:
-                    logger.error(f"Error loading screening preset: {e}")
-            
-            # Load user settings for notifications
-            user_doc = self.db.collection('users').document(self.user_id).get()
-            
-            if user_doc.exists:
-                user_data = user_doc.to_dict()
-                
-                # Store for activity logger
-                self._user_telegram_enabled = user_data.get('telegram_enabled', False)
-                self._user_telegram_chat_id = user_data.get('telegram_chat_id')
-                self._user_telegram_bot_token = user_data.get('telegram_bot_token')
-                
-                if self._user_telegram_enabled:
-                    logger.info(f"✅ Telegram notifications enabled")
-                else:
-                    logger.info(f"ℹ️  Telegram notifications disabled")
-            
-            logger.info("✅ User preferences loaded successfully")
-            
-        except Exception as e:
-            logger.error(f"Error loading user preferences: {e}", exc_info=True)
-            logger.warning("⚠️  Continuing with default settings")
-    
     def _close_position_replay_helper(self, position, exit_price, signal_type, rationale):
         """Helper method to close position during replay mode"""
         ticker = position['ticker']
@@ -3780,260 +3564,4 @@ class RealtimeBotEngine:
         logger.info(f"   📴 Closed {ticker} @ ₹{exit_price:.2f} | P&L: ₹{pnl:,.2f} ({pnl_pct:+.2f}%)")
         
         return signal_data
-    
-    # 🏥 PRODUCTION-GRADE SELF-HEALING METHODS
-    
-    def _initialize_websocket_with_retry(self):
-        """
-        Initialize WebSocket with automatic retry and exponential backoff.
-        
-        Retry strategy:
-        - Initial retry: 1 second
-        - Exponential backoff: doubles each time (1s, 2s, 4s, 8s, 16s...)
-        - Max delay: 5 minutes
-        - Max attempts: 10
-        
-        Common failure causes:
-        - Token expiry (every 24 hours)
-        - Network issues
-        - Angel One server issues
-        - Rate limiting
-        """
-        attempt = 0
-        
-        while attempt < self.max_ws_reconnect_attempts:
-            try:
-                attempt += 1
-                logger.info(f"🔌 WebSocket connection attempt {attempt}/{self.max_ws_reconnect_attempts}...")
-                
-                self._initialize_websocket()
-                
-                # Success!
-                self.ws_reconnect_attempts = 0
-                self.ws_reconnect_delay = 1
-                logger.info("✅ WebSocket connected successfully")
-                return
-                
-            except Exception as e:
-                logger.warning(f"⚠️  WebSocket attempt {attempt} failed: {e}")
-                
-                if attempt >= self.max_ws_reconnect_attempts:
-                    logger.error(f"❌ WebSocket failed after {attempt} attempts")
-                    raise
-                
-                # Exponential backoff
-                delay = min(self.ws_reconnect_delay * (2 ** (attempt - 1)), self.max_ws_reconnect_delay)
-                logger.info(f"⏳ Retrying in {delay} seconds...")
-                time.sleep(delay)
-    
-    def _bootstrap_historical_candles_with_retry(self):
-        """
-        Bootstrap historical candles with automatic retry on failure.
-        
-        Retry strategy:
-        - 3 attempts total
-        - 5 second delay between attempts
-        - Different failure modes:
-          - Rate limit: wait and retry
-          - Market closed: wait longer
-          - Network: immediate retry
-        """
-        max_attempts = 3
-        attempt = 0
-        
-        while attempt < max_attempts:
-            try:
-                attempt += 1
-                logger.info(f"📊 Bootstrap attempt {attempt}/{max_attempts}...")
-                
-                self._bootstrap_historical_candles()
-                
-                # Success!
-                logger.info("✅ Historical data bootstrapped successfully")
-                return
-                
-            except Exception as e:
-                error_str = str(e).lower()
-                
-                # Check error type
-                if 'rate limit' in error_str or '429' in error_str:
-                    logger.warning(f"⚠️  Rate limited - attempt {attempt}/{max_attempts}")
-                    if attempt < max_attempts:
-                        logger.info("⏳ Waiting 10 seconds before retry...")
-                        time.sleep(10)
-                    
-                elif 'market' in error_str or 'not available' in error_str:
-                    logger.warning(f"⚠️  Market data not available - attempt {attempt}/{max_attempts}")
-                    if attempt < max_attempts:
-                        logger.info("⏳ Waiting 30 seconds before retry...")
-                        time.sleep(30)
-                    
-                else:
-                    logger.warning(f"⚠️  Bootstrap failed: {e} - attempt {attempt}/{max_attempts}")
-                    if attempt < max_attempts:
-                        logger.info("⏳ Waiting 5 seconds before retry...")
-                        time.sleep(5)
-                
-                if attempt >= max_attempts:
-                    logger.error(f"❌ Bootstrap failed after {attempt} attempts")
-                    logger.info("🔄 Switching to automatic recovery mode (live ticks)")
-                    raise
-    
-    def _api_call_with_retry(self, func, *args, **kwargs):
-        """
-        Execute any API call with automatic retry on transient failures.
-        
-        Args:
-            func: Function to call
-            *args: Function arguments
-            **kwargs: Function keyword arguments
-        
-        Returns:
-            Function result
-        
-        Raises:
-            Exception if all retries fail
-        """
-        func_name = func.__name__
-        max_retries = self.max_api_retries
-        
-        for attempt in range(1, max_retries + 1):
-            try:
-                result = func(*args, **kwargs)
-                
-                # Success - reset retry counter
-                if func_name in self.api_retry_count:
-                    del self.api_retry_count[func_name]
-                
-                return result
-                
-            except Exception as e:
-                error_str = str(e).lower()
-                
-                # Don't retry on authentication errors
-                if 'auth' in error_str or '401' in error_str or 'token' in error_str:
-                    logger.error(f"❌ Authentication error in {func_name}: {e}")
-                    logger.error("🔑 Token expired - need fresh credentials")
-                    raise
-                
-                # Retry on network/transient errors
-                if attempt < max_retries and any(x in error_str for x in ['timeout', 'connection', 'network', '429', '500', '502', '503']):
-                    delay = 2 ** attempt  # Exponential backoff: 2s, 4s, 8s
-                    logger.warning(f"⚠️  {func_name} failed (attempt {attempt}/{max_retries}): {e}")
-                    logger.info(f"⏳ Retrying in {delay} seconds...")
-                    time.sleep(delay)
-                else:
-                    logger.error(f"❌ {func_name} failed after {attempt} attempts: {e}")
-                    raise
-    
-    def _health_check_loop(self):
-        """
-        Continuous health monitoring with automatic recovery.
-        
-        Monitors:
-        - WebSocket connection
-        - Data flow (ticks, candles, prices)
-        - Token expiry
-        - Position monitoring
-        
-        Auto-recovery:
-        - Reconnect WebSocket if disconnected
-        - Warn if token expiring soon
-        - Alert if data stopped flowing
-        """
-        logger.info("🏥 Health monitoring started")
-        
-        while self.is_running:
-            try:
-                # Check every minute
-                time.sleep(60)
-                
-                # WebSocket health
-                if self.ws_manager and hasattr(self.ws_manager, 'is_connected'):
-                    if not self.ws_manager.is_connected:
-                        logger.warning("⚠️  WebSocket disconnected - attempting reconnection...")
-                        try:
-                            self._initialize_websocket_with_retry()
-                            logger.info("✅ WebSocket reconnected successfully")
-                            
-                            # Resubscribe to symbols
-                            self._subscribe_to_symbols()
-                            logger.info("✅ Resubscribed to symbols")
-                            
-                        except Exception as e:
-                            logger.error(f"❌ WebSocket reconnection failed: {e}")
-                
-                # Data flow health
-                with self._lock:
-                    num_prices = len(self.latest_prices)
-                    num_candles = len(self.candle_data)
-                
-                if num_prices == 0 and self.ws_manager:
-                    logger.warning("⚠️  No price data flowing - WebSocket may be stale")
-                
-                if num_candles < len(self.symbols) * 0.5:
-                    logger.info(f"📊 Building candles: {num_candles}/{len(self.symbols)} symbols ready")
-                
-                # Log health status
-                logger.info(f"🏥 Health check: WS={bool(self.ws_manager and getattr(self.ws_manager, 'is_connected', False))}, Prices={num_prices}, Candles={num_candles}")
-                
-            except Exception as e:
-                logger.error(f"Error in health check: {e}")
-    
-    def _detect_token_expiry(self):
-        """
-        Detect if tokens are about to expire and warn user.
-        
-        Angel One tokens expire after 24 hours.
-        Warn at 23 hours (1 hour before expiry).
-        """
-        if self.token_expiry_warned:
-            return  # Already warned
-        
-        try:
-            # Check token age from Firestore
-            creds_doc = self.db.collection('angel_one_credentials').document(self.user_id).get()
-            
-            if creds_doc.exists:
-                creds = creds_doc.to_dict()
-                token_time = creds.get('token_timestamp')
-                
-                if token_time:
-                    from datetime import datetime, timedelta
-                    
-                    # Convert Firestore timestamp to datetime
-                    if hasattr(token_time, 'timestamp'):
-                        token_datetime = datetime.fromtimestamp(token_time.timestamp())
-                    else:
-                        token_datetime = token_time
-                    
-                    # Check if token is older than 23 hours
-                    age = datetime.now() - token_datetime
-                    
-                    if age.total_seconds() > 23 * 3600:  # 23 hours
-                        logger.warning("="*80)
-                        logger.warning("⚠️  TOKEN EXPIRY WARNING")
-                        logger.warning("="*80)
-                        logger.warning("🔑 Your Angel One tokens will expire soon!")
-                        logger.warning(f"   Token age: {age.total_seconds() / 3600:.1f} hours")
-                        logger.warning("")
-                        logger.warning("🔧 ACTION REQUIRED:")
-                        logger.warning("   1. Go to Dashboard → Settings")
-                        logger.warning("   2. Click 'Connect Angel One'")
-                        logger.warning("   3. Login to refresh tokens")
-                        logger.warning("")
-                        logger.warning("⏰ Do this in the next hour to avoid disconnection!")
-                        logger.warning("="*80)
-                        
-                        self.token_expiry_warned = True
-                        
-                        # Log to activity feed
-                        if self._activity_logger:
-                            self._activity_logger.log_activity(
-                                'TOKEN_EXPIRY_WARNING',
-                                'Angel One tokens expiring soon - reconnect required'
-                            )
-        
-        except Exception as e:
-            logger.debug(f"Token expiry check error: {e}")
 
